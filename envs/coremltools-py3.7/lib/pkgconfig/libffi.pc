@@ -1,0 +1,11 @@
+prefix=/Users/tonybove/opt/coremltools/envs/coremltools-py3.7
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+toolexeclibdir=${libdir}
+includedir=/Users/tonybove/opt/coremltools/envs/coremltools-py3.7/include
+
+Name: libffi
+Description: Library supporting Foreign Function Interfaces
+Version: 3.3
+Libs: -L${toolexeclibdir} -lffi
+Cflags: -I${includedir}
