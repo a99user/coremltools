@@ -3,9 +3,16 @@
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
-from coremltools.converters.mil.mil import types
-from coremltools.converters.mil.mil import Operation
-from coremltools.converters.mil.mil.input_type import *
+from coremltools.converters.mil.mil import types, Operation
+from coremltools.converters.mil.mil.input_type import (
+    BoolInputType,
+    DefaultInputs,
+    FloatInputType,
+    InputSpec,
+    IntInputType,
+    StringInputType,
+    TensorInputType,
+)
 from coremltools.converters.mil.mil.ops.registry import SSAOpRegistry
 
 register_op = SSAOpRegistry.register_op
@@ -35,7 +42,7 @@ class tf_make_list(Operation):
             init_length=1,
             dynamic_length=True,
             dtype="fp32",
-            )
+        )
 
     def __init__(self, **kwargs):
         super(tf_make_list, self).__init__(**kwargs)
@@ -82,7 +89,7 @@ class TfLSTMBase(Operation):
         return DefaultInputs(
             forget_bias=1.,
             use_peephole=False,
-            )
+        )
 
     def _check_peephole_weights(self):
         # Check weight_peep_*

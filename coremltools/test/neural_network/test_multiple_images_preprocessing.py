@@ -1,4 +1,7 @@
-
+# Copyright (c) 2021, Apple Inc. All rights reserved.
+#
+# Use of this source code is governed by a BSD-3-clause license that can be
+# found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 import json
 import os
 import shutil
@@ -48,11 +51,11 @@ def load_mlmodel(model_path):
         return False
 
 
-def compare_models(caffe_preds, coreml_preds):
+def compare_models(keras_preds, coreml_preds):
     max_relative_error = 0
     for i in range(len(coreml_preds)):
-        max_den = max(1.0, np.abs(caffe_preds[i]), np.abs(coreml_preds[i]))
-        relative_error = np.abs(caffe_preds[i] / max_den - coreml_preds[i] / max_den)
+        max_den = max(1.0, np.abs(keras_preds[i]), np.abs(coreml_preds[i]))
+        relative_error = np.abs(keras_preds[i] / max_den - coreml_preds[i] / max_den)
         if relative_error > max_relative_error:
             max_relative_error = relative_error
 
@@ -104,9 +107,9 @@ class ManyImagesKeras(unittest.TestCase):
             coreml_input_dict["data"] = PIL.Image.fromarray(data.astype(np.uint8))
             coreml_preds = coreml_model.predict(coreml_input_dict)["output"].flatten()
 
-            self.assertEquals(len(keras_preds), len(coreml_preds))
+            self.assertEqual(len(keras_preds), len(coreml_preds))
             max_relative_error = compare_models(keras_preds, coreml_preds)
-            self.assertAlmostEquals(max(max_relative_error, 0.001), 0.001, delta=1e-6)
+            self.assertAlmostEqual(max(max_relative_error, 0.001), 0.001, delta=1e-6)
 
         if os.path.exists(model_dir):
             shutil.rmtree(model_dir)
@@ -180,9 +183,9 @@ class ManyImagesKeras(unittest.TestCase):
             coreml_preds = coreml_model.predict(coreml_input_dict)["output"].flatten()
 
             # compare
-            self.assertEquals(len(keras_preds), len(coreml_preds))
+            self.assertEqual(len(keras_preds), len(coreml_preds))
             max_relative_error = compare_models(keras_preds, coreml_preds)
-            self.assertAlmostEquals(max(max_relative_error, 0.001), 0.001, delta=1e-6)
+            self.assertAlmostEqual(max(max_relative_error, 0.001), 0.001, delta=1e-6)
 
         if os.path.exists(model_dir):
             shutil.rmtree(model_dir)

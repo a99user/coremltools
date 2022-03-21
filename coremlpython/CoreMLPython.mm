@@ -1,3 +1,7 @@
+// Copyright (c) 2021, Apple Inc. All rights reserved.
+//
+// Use of this source code is governed by a BSD-3-clause license that can be
+// found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 #import <CoreML/CoreML.h>
 #import "CoreMLPythonArray.h"
 #import "CoreMLPython.h"
@@ -6,7 +10,6 @@
 #import "Utils.hpp"
 #import <fstream>
 #import <vector>
-#import "NeuralNetworkBuffer.hpp"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
@@ -28,7 +31,7 @@ Model::~Model() {
     }
 }
 
-Model::Model(const std::string& urlStr, bool useCPUOnly) {
+Model::Model(const std::string& urlStr, const std::string& computeUnits) {
     @autoreleasepool {
 
         // Compile the model
@@ -59,8 +62,13 @@ Model::Model(const std::string& urlStr, bool useCPUOnly) {
 
         if (@available(macOS 10.14, *)) {
             MLModelConfiguration *configuration = [MLModelConfiguration new];
-            if (useCPUOnly){
+            if (computeUnits == "CPU_ONLY") {
                 configuration.computeUnits = MLComputeUnitsCPUOnly;
+            } else if (computeUnits == "CPU_AND_GPU") {
+                configuration.computeUnits = MLComputeUnitsCPUAndGPU;
+            } else {
+                assert(computeUnits == "ALL");
+                configuration.computeUnits = MLComputeUnitsAll;
             }
             m_model = [MLModel modelWithContentsOfURL:compiledUrl configuration:configuration error:&error];
         } else {
@@ -104,97 +112,21 @@ int32_t Model::maximumSupportedSpecificationVersion() {
     return CoreML::MLMODEL_SPECIFICATION_VERSION_NEWEST;
 }
 
-NeuralNetworkShapeInformation::NeuralNetworkShapeInformation(const std::string& filename) {
-    CoreML::Specification::Model model;
-    Result r = CoreML::loadSpecificationPath(model, filename);
-    shaper = std::unique_ptr<NeuralNetworkShaper>(new NeuralNetworkShaper(model));
-}
-
-NeuralNetworkShapeInformation::NeuralNetworkShapeInformation(const std::string& filename, bool useInputAndOutputConstraints) {
-    CoreML::Specification::Model model;
-    Result r = CoreML::loadSpecificationPath(model, filename);
-    shaper = std::unique_ptr<NeuralNetworkShaper>(new NeuralNetworkShaper(model, useInputAndOutputConstraints));
-}
-
-void NeuralNetworkShapeInformation::init(const std::string& filename) {
-    CoreML::Specification::Model model;
-    Result r = CoreML::loadSpecificationPath(model, filename);
-    shaper.reset(new NeuralNetworkShaper(model));
-}
-
-py::dict NeuralNetworkShapeInformation::shape(const std::string& name) {
-    const ShapeConstraint& constraint = shaper->shape(name);
-    return Utils::shapeConstraintToPyDict(constraint);
-}
-
-void NeuralNetworkShapeInformation::print() const {
-    shaper->print();
-}
 
 /*
- * NeuralNetworkBuffer - NeuralNetworkBuffer
+ *
+ * bindings
+ *
  */
-NeuralNetworkBufferInformation::NeuralNetworkBufferInformation(const std::string &bufferFilePath, NNBuffer::BufferMode mode)
-    : nnBuffer(std::make_unique<NNBuffer::NeuralNetworkBuffer>(bufferFilePath, mode))
-{
-}
-
-/*
- * NeuralNetworkBufferInformation - ~NeuralNetworkBufferInformation
- */
-NeuralNetworkBufferInformation::~NeuralNetworkBufferInformation() = default;
-
-/*
- * NeuralNetworkBuffer - addBuffer
- * Writes given buffer into file
- * Returns offset from the beginning of buffer
- */
-template <typename T>
-inline u_int64_t NeuralNetworkBufferInformation::addBuffer(const std::vector<T>& buffer) {
-    return nnBuffer->AddBuffer(buffer);
-}
-
-/*
- * NeuralNetworkBufferInformation - getBuffer
- * Reads buffer from given offset and of given size and writes to data
- */
-template <typename T>
-inline std::vector<T> NeuralNetworkBufferInformation::getBuffer(const u_int64_t offset) {
-    // TODO: Explore Pybind11 Opaque to pass vector by reference
-    std::vector<T> buffer;
-    nnBuffer->GetBuffer(offset, buffer);
-    return buffer;
-}
 
 PYBIND11_PLUGIN(libcoremlpython) {
     py::module m("libcoremlpython", "CoreML.Framework Python bindings");
 
     py::class_<Model>(m, "_MLModelProxy")
-        .def(py::init<const std::string&, bool>())
+        .def(py::init<const std::string&, const std::string&>())
         .def("predict", &Model::predict)
         .def_static("auto_set_specification_version", &Model::autoSetSpecificationVersion)
         .def_static("maximum_supported_specification_version", &Model::maximumSupportedSpecificationVersion);
-
-    py::class_<NeuralNetworkShapeInformation>(m, "_NeuralNetworkShaperProxy")
-        .def(py::init<const std::string&>())
-        .def(py::init<const std::string&, bool>())
-        .def("shape", &NeuralNetworkShapeInformation::shape)
-        .def("print", &NeuralNetworkShapeInformation::print);
-
-    py::class_<NeuralNetworkBufferInformation> netBuffer(m, "_NeuralNetworkBuffer");
-    netBuffer.def(py::init<const std::string&, NNBuffer::BufferMode>())
-        .def("add_buffer_float", &NeuralNetworkBufferInformation::addBuffer<float>)
-        .def("add_buffer_int", &NeuralNetworkBufferInformation::addBuffer<int32_t>)
-        .def("add_buffer_bool", &NeuralNetworkBufferInformation::addBuffer<uint8_t>)
-        .def("get_buffer_float", &NeuralNetworkBufferInformation::getBuffer<float>)
-        .def("get_buffer_int", &NeuralNetworkBufferInformation::getBuffer<int32_t>)
-        .def("get_buffer_bool", &NeuralNetworkBufferInformation::getBuffer<uint8_t>);
-    
-    py::enum_<NNBuffer::BufferMode>(netBuffer, "mode")
-        .value("write", NNBuffer::BufferMode::Write)
-        .value("append", NNBuffer::BufferMode::Append)
-        .value("read", NNBuffer::BufferMode::Read)
-        .export_values();
 
     return m.ptr();
 }

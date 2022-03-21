@@ -3,9 +3,11 @@
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
-from coremltools.converters.mil.mil import types
-from .var import InternalVar
 from collections import OrderedDict
+
+from coremltools.converters.mil.mil import types
+from coremltools.converters.mil.mil.var import InternalVar
+
 
 SUPPORT_INT_TYPES = [
                         types.uint8,
@@ -24,7 +26,8 @@ SUPPORT_FLOAT_TYPES = [
                         types.fp64,
                     ]
 
-class DefaultInputs(object):
+
+class DefaultInputs:
     def __init__(self, **kwargs):
         # Since python 3.6, kwargs preserves the input order. See
         # https://docs.python.org/3/whatsnew/3.6.html#whatsnew36-pep468
@@ -42,7 +45,8 @@ class DefaultInputs(object):
             self._ordered_dict[k] = v
         return self
 
-class InputSpec(object):
+
+class InputSpec:
     def __init__(self, **kwargs):
         # Since python 3.6, kwargs preserves the input order. See
         # https://docs.python.org/3/whatsnew/3.6.html#whatsnew36-pep468
@@ -122,7 +126,7 @@ class InputSpec(object):
 
 
 
-class _InputType(object):
+class _InputType:
     """
     (Untyped) input containing fundamental properties of all inputs to an
     Operation:
@@ -177,6 +181,7 @@ class _InputType(object):
         """Descriptive string describing expected mil types"""
         return self.__str__(self)
 
+
 class ListInputType(_InputType):
     def __init__(self, **kwargs):
         super(ListInputType, self).__init__(**kwargs)
@@ -187,6 +192,7 @@ class ListInputType(_InputType):
     @property
     def type_str(self):
         return 'list'
+
 
 class ScalarOrTensorInputType(_InputType):
     def __init__(self, **kwargs):
@@ -342,6 +348,23 @@ class TensorInputType(ScalarOrTensorInputType):
     def type_str(self):
         return 'tensor'
 
+class FloatTensorInputType(ScalarOrTensorInputType):
+    """
+    Tensor input with float values
+    with _sym_type in [types.fp16, types.fp32, types.fp64]
+
+    Raise error when value set is not float.
+    """
+
+    def __init__(self, **kwargs):
+        super(FloatTensorInputType, self).__init__(**kwargs)
+
+    def _is_compatible(self, v):
+        return types.is_tensor(v.sym_type) and v.dtype in SUPPORT_FLOAT_TYPES
+    @property
+    def type_str(self):
+        return 'float tensor'
+
 class IntTensorInputType(ScalarOrTensorInputType):
     """
     Tensor input with int values
@@ -393,6 +416,7 @@ class TupleInputType(_InputType):
     @property
     def type_str(self):
         return 'tuple'
+
 
 class InternalInputType(_InputType):
     """

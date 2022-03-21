@@ -49,7 +49,7 @@ class BoostedTreeClassificationBostonHousingScikitNumericTest(unittest.TestCase)
         self.output_name = "target"
 
     def _check_metrics(self, metrics, params={}):
-        self.assertEquals(
+        self.assertEqual(
             metrics["num_errors"],
             0,
             msg="Failed case %s. Results %s" % (params, metrics),
@@ -166,7 +166,7 @@ class BoostedTreeClassificationBostonHousingXGboostNumericTest(unittest.TestCase
     """
 
     def _check_metrics(self, metrics, params={}):
-        self.assertEquals(
+        self.assertEqual(
             metrics["num_errors"],
             0,
             msg="Failed case %s. Results %s" % (params, metrics),
@@ -194,7 +194,7 @@ class BoostedTreeClassificationBostonHousingXGboostNumericTest(unittest.TestCase
             metrics = evaluate_classifier_with_probabilities(
                 spec, df, probabilities="classProbability", verbose=False
             )
-            self.assertEquals(metrics["num_key_mismatch"], 0)
+            self.assertEqual(metrics["num_key_mismatch"], 0)
             self.assertLess(metrics["max_probability_error"], 1e-3)
 
     def _classifier_stress_test(self):
@@ -210,6 +210,7 @@ class BoostedTreeClassificationBostonHousingXGboostNumericTest(unittest.TestCase
             self._train_convert_evaluate_assert(**arg)
 
 
+@unittest.skipIf(_macos_version() >= (10, 16), "rdar://problem/84898245")
 @unittest.skipIf(not _HAS_SKLEARN, "Missing sklearn. Skipping tests.")
 @unittest.skipIf(not _HAS_XGBOOST, "Skipping, no xgboost")
 class BoostedTreeBinaryClassificationBostonHousingXGboostNumericTest(
@@ -240,6 +241,7 @@ class BoostedTreeBinaryClassificationBostonHousingXGboostNumericTest(
         self._classifier_stress_test()
 
 
+@unittest.skipIf(_macos_version() >= (12, 0), "rdar://problem/84898245")
 @unittest.skipIf(not _HAS_SKLEARN, "Missing sklearn. Skipping tests.")
 @unittest.skipIf(not _HAS_XGBOOST, "Skipping, no xgboost")
 class BoostedTreeMultiClassClassificationBostonHousingXGboostNumericTest(

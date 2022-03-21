@@ -3,12 +3,19 @@
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
-from coremltools.converters.mil import testing_reqs
-from coremltools.converters.mil.testing_reqs import *
+import itertools
+import pytest
+import numpy as np
 
 from .testing_utils import run_compare_builder
+from coremltools._deps import _HAS_TF_1, MSG_TF1_NOT_FOUND
+from coremltools.converters.mil import testing_reqs
+from coremltools.converters.mil.mil import Builder as mb, types
+from coremltools.converters.mil.testing_reqs import backends
+from coremltools.converters.mil.testing_utils import ssa_fn
 
-backends = testing_reqs.backends
+if _HAS_TF_1:
+    import tensorflow as tf
 
 
 class TestScatter:
@@ -171,7 +178,7 @@ class TestScatterAlongAxis:
         v = mb.scatter_along_axis(
             data=x, indices=indices, updates=updates, axis=0, mode="update"
         )
-        assert is_close(np.array([[1, 6, 10], [8, 9, 7]], dtype=np.float32), v.val)
+        np.testing.assert_allclose(np.array([[1, 6, 10], [8, 9, 7]], dtype=np.float32), v.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend, rank_axis",
@@ -225,7 +232,6 @@ class TestScatterAlongAxis:
 
 
 class TestScatterNd:
-    # TODO: <rdar://problem/59737282> [MIL] Scatter and ScatterNd in tensoflow
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
     )
@@ -359,7 +365,7 @@ class TestGather:
                 mb.gather(x=x, indices=indices, axis=-2),
                 mb.gather(x=x, indices=indices, axis=-1),
                 mb.gather(x=x, indices=indices),
-                mb.gather(x=x, indices=1),
+                # mb.gather(x=x, indices=1), #shape of scalar indices is incorrect.
                 # mb.gather(x=x, indices=1, axis=1), #Scalar index passes on axis=0 but fails on axis=1,
                 # Need to handle rank 0 correctly, rdar://73160449
             ]
@@ -370,7 +376,7 @@ class TestGather:
             (2, 3, types.fp32),
             (2, 2, types.fp32),
             (2, 3, types.fp32),
-            (3, types.fp32),
+            # (3, types.fp32),
         ]
 
         expected_outputs = [
@@ -379,7 +385,7 @@ class TestGather:
             np.array([[4, 5, 6], [1, 2, 3]], dtype=np.float32),
             np.array([[2, 1], [5, 4]], dtype=np.float32),
             np.array([[4, 5, 6], [1, 2, 3]], dtype=np.float32),
-            np.array([4, 5, 6], dtype=np.float32),
+            # np.array([4, 5, 6], dtype=np.float32),
         ]
 
         run_compare_builder(
@@ -476,7 +482,7 @@ class TestGather:
         x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         indices = np.array([1, 0], dtype=np.int32)
         v = mb.gather(x=x, indices=indices, axis=-1)
-        assert is_close(np.array([[2, 1], [5, 4]], dtype=np.float32), v.val)
+        np.testing.assert_allclose(np.array([[2, 1], [5, 4]], dtype=np.float32), v.val, atol=1e-04, rtol=1e-05)
 
 
 class TestGatherAlongAxis:
@@ -484,6 +490,10 @@ class TestGatherAlongAxis:
         "use_cpu_only, backend", itertools.product([True, False], backends,)
     )
     def test_builder_to_backend_smoke(self, use_cpu_only, backend):
+
+        if backend[0] == "mlprogram" and not use_cpu_only:
+            pytest.xfail("rdar://80710279 (Crash in GatherAlongAxis unit test on MIL GPU context)")
+
         x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         indices = np.array([[1, 0, 1], [1, 1, 0]], dtype=np.int32)
         input_placeholders = {
@@ -534,17 +544,20 @@ class TestGatherAlongAxis:
         x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         indices = np.array([[1, 0, 1], [0, 0, 1]], dtype=np.int32)
         v = mb.gather_along_axis(x=x, indices=indices, axis=0)
-        assert is_close(np.array([[4, 2, 6], [1, 2, 6]], dtype=np.float32), v.val)
+        np.testing.assert_allclose(np.array([[4, 2, 6], [1, 2, 6]], dtype=np.float32), v.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
-        "use_cpu_only, backend, rank_axis",
+        "use_cpu_for_conversion, backend, rank_axis",
         itertools.product(
             [True, False],
             backends,
             [(rank, axis) for rank in range(1, 5) for axis in range(-rank, rank)],
         ),
     )
-    def test_builder_to_backend_programmatic(self, use_cpu_only, backend, rank_axis):
+    def test_builder_to_backend_programmatic(self, use_cpu_for_conversion, backend, rank_axis):
+        if backend[0] == "mlprogram" and not use_cpu_for_conversion:
+            pytest.xfail("rdar://78343225 ((MIL GPU) Core ML Tools Unit Test failures [numerical error])")
+
         rank, axis = rank_axis
         x_shape = np.random.randint(low=2, high=8, size=rank)
         indices_shape = np.copy(x_shape)
@@ -574,9 +587,10 @@ class TestGatherAlongAxis:
             input_values,
             expected_output_types,
             expected_output,
-            use_cpu_only=use_cpu_only,
+            use_cpu_only=use_cpu_for_conversion,
             frontend_only=False,
             backend=backend,
+            use_cpu_for_conversion=use_cpu_for_conversion,
         )
 
 

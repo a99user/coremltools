@@ -4,22 +4,25 @@
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
 import copy
-import pytest
-import numpy as np
-import unittest
 from sys import platform
+import unittest
+
+import numpy as np
 
 from coremltools._deps import _IS_MACOS
 import coremltools.models.datatypes as datatypes
 from coremltools.models.utils import _macos_version
-from coremltools.models import neural_network as neural_network
-from coremltools.models import MLModel
+from coremltools.models import (
+    neural_network as neural_network,
+    MLModel
+)
 from coremltools.models.neural_network.printer import print_network_spec
 from coremltools.converters.mil.backend.nn.passes.mlmodel_passes import (
     remove_disconnected_layers,
     transform_conv_crop,
     remove_redundant_transposes,
 )
+
 
 DEBUG = False
 np.random.seed(10)
@@ -76,7 +79,6 @@ class MLModelPassesTest(unittest.TestCase):
         remove_disconnected_layers(spec)
         np.testing.assert_equal(2, len(spec.neuralNetwork.layers))
 
-    @pytest.mark.xfail
     def test_dead_layer_remove_branch(self):
         convergence_tolerance = 1e-8
 
@@ -107,7 +109,7 @@ class MLModelPassesTest(unittest.TestCase):
         data = np.random.rand(2,)
         data_dict = {"input": data}
         if _IS_MACOS:
-            before_pass_out = mlmodel.predict(data_dict)["out"]
+            before_pass_out = mlmodel.predict(data_dict, useCPUOnly=True)["out"]
             if DEBUG:
                 print(
                     "\n mlmodel description before remove disconnected layers pass: \n"
@@ -120,7 +122,7 @@ class MLModelPassesTest(unittest.TestCase):
                 )
                 print_network_spec(builder.spec, style="coding")
             mlmodel = MLModel(builder.spec)
-            after_pass_out = mlmodel.predict(data_dict)["out"]
+            after_pass_out = mlmodel.predict(data_dict, useCPUOnly=True)["out"]
 
             np.testing.assert_almost_equal(before_pass_out, after_pass_out, decimal=2)
             np.testing.assert_equal(len(builder.spec.neuralNetwork.layers), 1)
@@ -158,9 +160,14 @@ class MLModelPassesTest(unittest.TestCase):
         builder.add_squeeze("out", "relu2_out", "out", squeeze_all=True)
 
         mlmodel = MLModel(builder.spec)
+
+        if not _IS_MACOS:
+            # Can not get predictions unless on macOS.
+            return
+
         data = np.random.rand(2,)
         data_dict = {"input": data}
-        before_pass_out = mlmodel.predict(data_dict)["out"]
+        before_pass_out = mlmodel.predict(data_dict, useCPUOnly=True)["out"]
         if DEBUG:
             print("\n mlmodel description before remove disconnected layers pass: \n")
             print_network_spec(builder.spec, style="coding")
@@ -170,7 +177,7 @@ class MLModelPassesTest(unittest.TestCase):
             print("\n mlmodel description after remove disconnected layers pass: \n")
             print_network_spec(builder.spec, style="coding")
         mlmodel = MLModel(builder.spec)
-        after_pass_out = mlmodel.predict(data_dict)["out"]
+        after_pass_out = mlmodel.predict(data_dict, useCPUOnly=True)["out"]
 
         np.testing.assert_almost_equal(before_pass_out, after_pass_out, decimal=2)
         np.testing.assert_equal(
@@ -328,20 +335,20 @@ class Redundant_Transposees_Test(unittest.TestCase):
 
         # Mlmodel before
         mlmodel = MLModel(builder.spec)
-        output_before = mlmodel.predict({"data": data})["out"]
+        output_before = mlmodel.predict({"data": data}, useCPUOnly=True)["out"]
         num_layers_before = len(builder.spec.neuralNetwork.layers)
 
         remove_redundant_transposes(builder.spec)
 
         layers = builder.spec.neuralNetwork.layers
-        if expected_layer_num == None:
+        if expected_layer_num is None:
             self.assertTrue(len(layers) < num_layers_before)
         else:
             self.assertEqual(len(layers), expected_layer_num)
 
         # Mlmodel after
         mlmodel = MLModel(builder.spec)
-        output_after = mlmodel.predict({"data": data})["out"]
+        output_after = mlmodel.predict({"data": data}, useCPUOnly=True)["out"]
 
         np.testing.assert_almost_equal(output_before, output_after, decimal=3)
 
@@ -1025,7 +1032,6 @@ class Redundant_Transposees_Test(unittest.TestCase):
         builder = neural_network.NeuralNetworkBuilder(
             [("data", datatypes.Array(2, 4, 8))], [("out", None)]
         )
-        last_layer = "data"
         builder.add_transpose(
             name="t1", axes=[0, 2, 1], input_name="data", output_name="t1"
         )

@@ -727,7 +727,7 @@ def _quantize_nn_spec(nn_spec, nbits, qm, **kwargs):
         layer_type = layer.WhichOneof("layer")
         if not selector.do_quantize(layer):
             continue
-        print("Quantizing layer {}".format(layer.name))
+        print("Quantizing layer {} of type {}".format(layer.name, layer_type))
 
         # Convolution
         if layer_type == "convolution":
@@ -1282,9 +1282,8 @@ def _characterize_qmodel_perf_with_data_dir(fpmodel, qspec, data_dir):
 
     if not test_image_paths:
         raise Exception(
-            """Path contains no supported image files.
-        Supported file types include jpg, bmp, png and jpeg.
-        """.format(
+            "{} contains no supported image files. "
+            "Supported file types include jpg, bmp, png and jpeg.".format(
                 data_dir
             )
         )
@@ -1638,13 +1637,12 @@ def quantize_weights(
 
     if _macos_version() < (10, 14):
         print(
-            "WARNING! Unable to return a quantized MLModel instance since"
-            "OS != macOS 10.14 or later"
-        )
-        print("Returning quantized model specification instead")
+            "WARNING - Unable to return a quantized MLModel instance since "
+            "OS is not macOS 10.14 or later. Returning a quantized model "
+            "specification instead.")
         return qspec
 
-    quantized_model = _get_model(qspec)
+    quantized_model = _get_model(qspec, compute_units=full_precision_model.compute_unit)
     if not sample_data:
         return quantized_model
 

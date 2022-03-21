@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
-
 #  Copyright (c) 2020, Apple Inc. All rights reserved.
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
+import logging
 
-import numpy as np
 from coremltools.converters.mil.mil.types.symbolic import (
     is_symbolic,
     any_variadic,
@@ -14,14 +12,14 @@ from coremltools.converters.mil.mil.types.symbolic import (
 )
 from coremltools.converters.mil.mil import Builder as mb
 from coremltools.converters.mil.mil.passes.pass_registry import register_pass
-import logging
+from coremltools.converters.mil.mil.passes.graph_pass import AbstractGraphPass
 
 
-def remove_symbolic_reshape_block(block):
+def _remove_symbolic_reshape_block(block):
     num_changes = 0
     for op in list(block.operations):
         for b in op.blocks:
-            num_changes += remove_symbolic_reshape_block(b)
+            num_changes += _remove_symbolic_reshape_block(b)
         if op.op_type != "reshape":
             continue
         if op.shape.val is not None:
@@ -29,6 +27,8 @@ def remove_symbolic_reshape_block(block):
             continue
         if op.shape.sym_val is None:
             # shape is runtime determined.
+            continue
+        if len(op.shape.child_ops) > 1:
             continue
         # Use output shape as `shape`
         shape = op.outputs[0].shape
@@ -47,7 +47,6 @@ def remove_symbolic_reshape_block(block):
         with block:
             shape_const = mb.const(
                 val=integer_shape,
-                mode="immediate_value",
                 name=op.shape.name + "x",
                 before_op=op,
             )
@@ -62,7 +61,7 @@ def remove_symbolic_reshape_block(block):
 
 
 @register_pass(namespace="common")
-def remove_symbolic_reshape(prog):
+class remove_symbolic_reshape(AbstractGraphPass):
     """
     Convert symbolic shape in `reshape` to integers.
 
@@ -95,7 +94,8 @@ def remove_symbolic_reshape(prog):
 
         prog: Program
     """
-    for f_name, f in prog.functions.items():
-        num_changes = remove_symbolic_reshape_block(f)
-        msg = "remove_symbolic_reshape: changed {} reshapes."
-        logging.info(msg.format(num_changes))
+    def apply(self, prog):
+        for f in prog.functions.values():
+            num_changes = _remove_symbolic_reshape_block(f)
+            msg = "remove_symbolic_reshape: changed {} reshapes."
+            logging.info(msg.format(num_changes))

@@ -4,10 +4,12 @@
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
 import logging
+import os
+import pytest
 
 from coremltools.converters.mil.mil.types.symbolic import is_symbolic
 from coremltools.converters.mil.mil import Program, Function
-from coremltools.converters.mil.testing_utils import compare_backend
+from coremltools.converters.mil.testing_utils import compare_backend, ct_convert
 
 UNK_VARIADIC = "*s_unk"
 UNK_SYM = "s_unk"
@@ -21,11 +23,12 @@ def run_compare_builder(
     expected_outputs=None,
     use_cpu_only=False,
     frontend_only=False,
-    backend="nn_proto",
+    backend=("neuralnetwork", "fp32"),
     atol=1e-04,
     rtol=1e-05,
     inputs=None,
     also_compare_shapes=False,
+    use_cpu_for_conversion=False,
 ):
     """
     Inputs:
@@ -49,9 +52,15 @@ def run_compare_builder(
         - frontend_only: True to test up to proto generation.
 
         - inputs: type of inputs (either None (defaults to tensor) or [ct.ImageType])
-    """
-    from coremltools.converters._converters_entry import convert
 
+        - use_cpu_for_conversion: bool
+            Argument which is passed as is to the unified converter API.
+            That is, "ct.convert(...., useCPUOnly=use_cpu_for_conversion)"
+            It forces the model to be loaded on the CPU context, post conversion.
+
+    Returns:
+        The converted mlmodel
+    """
     if not isinstance(expected_output_types, list):
         expected_output_types = [expected_output_types]
 
@@ -109,10 +118,11 @@ def run_compare_builder(
         if output_shape != expected_shape:
             raise ValueError(msg)
 
-    mlmodel = convert(prog, source="mil", convert_to=backend, inputs=inputs)
+    mlmodel = ct_convert(prog, source="milinternal", convert_to=backend, inputs=inputs,
+                         useCPUOnly=use_cpu_for_conversion)
 
     if frontend_only:
-        return
+        return mlmodel
 
     if expected_outputs:
         assert len(output_vars) == len(expected_outputs), (
@@ -133,4 +143,7 @@ def run_compare_builder(
         atol=atol,
         rtol=rtol,
         also_compare_shapes=also_compare_shapes,
+        dtype=backend[1]
     )
+    
+    return mlmodel

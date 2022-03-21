@@ -1,9 +1,17 @@
-import coremltools
-import coremltools.models.datatypes as datatypes
-from coremltools.models import neural_network as neural_network
-import numpy as np
+# Copyright (c) 2021, Apple Inc. All rights reserved.
+#
+# Use of this source code is governed by a BSD-3-clause license that can be
+# found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
+
 import os
-import pytest
+
+import numpy as np
+
+import coremltools
+from coremltools import utils
+from coremltools.models import neural_network as neural_network
+import coremltools.models.datatypes as datatypes
+
 
 class TestNeuralNetworkPrediction:
 
@@ -32,12 +40,14 @@ class TestNeuralNetworkPrediction:
 
         try:
             model = coremltools.models.MLModel(model_path)
-            out = model.predict(input, useCPUOnly=True)
+            if utils._macos_version() >= (10, 13):
+                out = model.predict(input, useCPUOnly=True)
         except RuntimeError as e:
             print(e)
             assert str(e) == "Error compiling model: \"The file couldn’t be saved.\"."
         else:
-            assert out['output'].shape == (1, 3, 3)
-            np.testing.assert_allclose(expected, out['output'])
-            print("Core ML output", out)
+            if utils._macos_version() >= (10, 13):
+                assert out['output'].shape == (1, 3, 3)
+                np.testing.assert_allclose(expected, out['output'])
+                print("Core ML output", out)
 

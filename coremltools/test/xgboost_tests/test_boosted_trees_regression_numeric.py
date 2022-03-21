@@ -3,11 +3,10 @@
 # Use of this source code is governed by a BSD-3-clause license that can be
 # found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
-import unittest
-
 import pandas as pd
 import itertools
 import pytest
+import unittest
 
 from coremltools._deps import _HAS_SKLEARN, _HAS_XGBOOST
 from coremltools.models.utils import evaluate_regressor, _macos_version, _is_macos
@@ -35,13 +34,13 @@ class GradientBoostingRegressorBostonHousingScikitNumericTest(unittest.TestCase)
         self.output_name = "target"
 
     def _check_metrics(self, metrics, params={}):
-        self.assertAlmostEquals(
+        self.assertAlmostEqual(
             metrics["rmse"],
             0,
             delta=1e-5,
             msg="Failed case %s. Results %s" % (params, metrics),
         )
-        self.assertAlmostEquals(
+        self.assertAlmostEqual(
             metrics["max_error"],
             0,
             delta=1e-5,
@@ -88,6 +87,7 @@ class GradientBoostingRegressorBostonHousingScikitNumericTest(unittest.TestCase)
             self._train_convert_evaluate_assert(**arg)
 
 
+@unittest.skipIf(_macos_version() >= (12, 0), "rdar://problem/84898245")
 @unittest.skipIf(not _HAS_XGBOOST, "Missing xgboost. Skipping")
 @unittest.skipIf(not _HAS_SKLEARN, "Missing scikit-learn. Skipping tests.")
 class XgboostBoosterBostonHousingNumericTest(unittest.TestCase):
@@ -113,13 +113,13 @@ class XgboostBoosterBostonHousingNumericTest(unittest.TestCase):
         """
         Check the metrics
         """
-        self.assertAlmostEquals(
+        self.assertAlmostEqual(
             metrics["rmse"],
             allowed_error.get("rmse", 0),
             delta=1e-2,
             msg="Failed case %s. Results %s" % (params, metrics),
         )
-        self.assertAlmostEquals(
+        self.assertAlmostEqual(
             metrics["max_error"],
             allowed_error.get("max_error", 0),
             delta=1e-2,
@@ -198,6 +198,7 @@ class XgboostBoosterBostonHousingNumericTest(unittest.TestCase):
             self._train_convert_evaluate_assert(arg)
 
 
+@unittest.skipIf(_macos_version() >= (12, 0), "rdar://problem/84898245")
 @unittest.skipIf(not _HAS_XGBOOST, "Missing xgboost. Skipping")
 @unittest.skipIf(not _HAS_SKLEARN, "Missing sklearn. Skipping tests.")
 class XGboostRegressorBostonHousingNumericTest(unittest.TestCase):
@@ -217,13 +218,13 @@ class XGboostRegressorBostonHousingNumericTest(unittest.TestCase):
         self.output_name = "target"
 
     def _check_metrics(self, metrics, params={}, allowed_error={}):
-        self.assertAlmostEquals(
+        self.assertAlmostEqual(
             metrics["rmse"],
             allowed_error.get("rmse", 0),
             delta=1e-2,
             msg="Failed case %s. Results %s" % (params, metrics),
         )
-        self.assertAlmostEquals(
+        self.assertAlmostEqual(
             metrics["max_error"],
             allowed_error.get("max_error", 0),
             delta=1e-2,

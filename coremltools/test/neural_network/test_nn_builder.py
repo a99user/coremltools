@@ -1,6 +1,12 @@
+# Copyright (c) 2021, Apple Inc. All rights reserved.
+#
+# Use of this source code is governed by a BSD-3-clause license that can be
+# found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
+
 import unittest
 
 import numpy as np
+import pytest
 
 import coremltools
 from coremltools.models import datatypes, MLModel
@@ -197,22 +203,21 @@ class BasicNumericCorrectnessTest_1014NewLayers(unittest.TestCase):
         expected_out = np.reshape(np.array([8, 44]), (2, 1, 1))
         self.assertTrue(np.allclose(out, expected_out))
 
-    @unittest.skip("<rdar://problem/68866645> Investigate numerical discrepancy during quantization in CoreML")
     def test_linear_quant_convolution_8bit_float_scale_and_bias(self):
         W = np.array(([[[[1, 248], [248, 248]]]]), dtype=np.uint8)
         mlmodel = self.build_quant_conv_layer(
             W=W.flatten().tobytes(),
             quantization_type="linear",
             nbits=8,
-            quant_scale=[15.346457],
-            quant_bias=[-3913.3464],
+            quant_scale=[15],
+            quant_bias=[-3913],
             output_channels=1,
         )
         data = np.ones((1, 2, 2))
         data_dict = {"data": data}
         out = mlmodel.predict(data_dict, useCPUOnly=True)["out"]
         # Output should be equal to: (scale*(1+248+248+248)+(4*bias))
-        expected_out = np.reshape(np.array([-4220.275]), (1, 1, 1, 1, 1))
+        expected_out = np.reshape(np.array([-4477]), (1, 1, 1, 1, 1))
         self.assertTrue(np.allclose(out, expected_out))
 
     def test_lut_quant_convolution_2bit(self):
@@ -403,6 +408,7 @@ class BasicNumericCorrectnessTest_1015NewLayers(unittest.TestCase):
         self.assertTrue(out.shape == expected_out.shape)
         self.assertTrue(np.allclose(out.flatten(), expected_out.flatten()))
 
+
     def test_linear_quant_embedding_7bit(self):
         embed_size = 2
         vocab_size = 3
@@ -500,10 +506,10 @@ class BasicNumericCorrectnessTest(unittest.TestCase):
         builder = self._build_nn_with_one_ip_layer()
         builder.set_input(input_names=["data_renamed"], input_dims=[(2,)])
 
-        self.assertEquals(
+        self.assertEqual(
             builder.spec.description.input[0].type.multiArrayType.shape[0], 2
         )
-        self.assertEquals(builder.spec.description.input[0].name, "data_renamed")
+        self.assertEqual(builder.spec.description.input[0].name, "data_renamed")
 
     def test_set_input_fail(self):
         builder = self._build_nn_with_one_ip_layer()
@@ -516,10 +522,10 @@ class BasicNumericCorrectnessTest(unittest.TestCase):
         builder = self._build_nn_with_one_ip_layer()
         builder.set_output(output_names=["out_renamed"], output_dims=[(2,)])
 
-        self.assertEquals(
+        self.assertEqual(
             builder.spec.description.output[0].type.multiArrayType.shape[0], 2
         )
-        self.assertEquals(builder.spec.description.output[0].name, "out_renamed")
+        self.assertEqual(builder.spec.description.output[0].name, "out_renamed")
 
     def test_set_output_fail(self):
         builder = self._build_nn_with_one_ip_layer()
@@ -598,9 +604,9 @@ class UseFloatArraytypeTest(unittest.TestCase):
             else coremltools.proto.FeatureTypes_pb2.ArrayFeatureType.DOUBLE
         )
         for input in spec.description.input:
-            self.assertEquals(input.type.multiArrayType.dataType, array_feature_type)
+            self.assertEqual(input.type.multiArrayType.dataType, array_feature_type)
         for output in spec.description.input:
-            self.assertEquals(output.type.multiArrayType.dataType, array_feature_type)
+            self.assertEqual(output.type.multiArrayType.dataType, array_feature_type)
 
         # Assert that the generated spec is functional
         mlmodel = MLModel(spec)

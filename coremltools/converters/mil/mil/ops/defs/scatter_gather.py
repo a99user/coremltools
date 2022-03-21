@@ -2,10 +2,11 @@
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
+
 import numpy as np
 import numbers
 
-from coremltools.converters.mil.mil import Operation, types, SYMBOL, VALUE
+from coremltools.converters.mil.mil import Operation, types
 from coremltools.converters.mil.mil.input_type import (
     DefaultInputs,
     InputSpec,
@@ -16,7 +17,11 @@ from coremltools.converters.mil.mil.input_type import (
 )
 from coremltools.converters.mil.mil.operation import precondition
 from coremltools.converters.mil.mil.ops.defs._op_reqs import register_op
-from coremltools.converters.mil.mil.types.symbolic import is_compatible_symbolic_vector
+from coremltools.converters.mil.mil.types.symbolic import is_compatible_symbolic_vector, is_symbolic
+from coremltools.converters.mil.mil.operation import (
+    SYMBOL,
+    VALUE
+)
 
 
 @register_op(doc_str="")
@@ -24,34 +29,34 @@ class gather(Operation):
     """
     Gather slices from input ``x`` along dimension ``axis`` according to ``indices``,
     similar to `tf.gather <https://www.tensorflow.org/api_docs/python/tf/gather>`_.
-    
+
     * If ``indices`` is scalar (0-D):
-    
+
     .. math::
        output[p_0, ..., p_{axis-1}, ~~~~~~~~~~~~~~~~~~~~~~~~ p_{axis+1}, ..., p_{rank(x)-1}] =
     .. math::
        x[p_0, ..., p_{axis-1}, ~~~~~~~~~ indices, ~~~~~~~~ p_{axis+1}, ..., p_{rank(x)-1}]
-    
+
     Where ``rank(x)`` is the rank of ``x``. The ``output`` has rank ``rank(x) - 1``.
-    
+
     * If ``indices`` is 1-D tensor:
-    
+
     .. math::
        output[p_0, ..., p_{axis-1}, ~~~~~~~~~~~~~ i, ~~~~~~~~~~~~~ p_{axis+1}, ..., p_{rank(*D)-1}] =
     .. math::
        x[p_0, ..., p_{axis-1}, ~~~~~~~~ indices[i], ~~~~~~~~ p_{axis+1}, ..., p_{rank(*D)-1}]
-    
+
     The output has rank ``rank(x)``.
-    
+
     * In general:
-    
+
     .. math::
        output[p_0, ..., p_{axis-1}, ~~~~~~~~ i_0, ..., i_{M-1}, ~~~~~~~~ p_{axis+1}, ..., p_{rank(x)-1}] =
     .. math::
        x[p_0, ..., p_{axis-1}, ~~~~~~~ indices[i_0, ..., i_{M-1}], ~~~~~~~ p_{axis+1}, ..., p_{rank(x)-1}]
-    
-    Where ``M = rank(x)``.
-    
+
+    Where ``M = rank(indices)``.
+
     Parameters
     ----------
     x: tensor<\*D,T> (Required)
@@ -59,22 +64,22 @@ class gather(Operation):
         * Indices values may be negative. More precisely, ``-D[axis]<= v < D[axis]`` for ``v`` in ``indices``.
     axis: const i32 (Optional. Default=``0``)
         * Negative axis is supported.
-    
+
     Returns
     -------
     tensor<\*K,T>
         * Where ``K = D[:axis] + N + D[axis+1:]``.
-    
+
     Attributes
     ----------
     T: fp32
-    
+
     References
     ----------
     See `tf.gather <https://www.tensorflow.org/api_docs/python/tf/gather>`_.
-    
+
     """
-    
+
     input_spec = InputSpec(
         x=TensorInputType(),
         indices=IntInputType(),
@@ -134,41 +139,41 @@ class scatter(Operation):
     """
     Scatter ``updates`` to ``data`` at locations ``indices`` at dimension ``axis``
     by operation ``mode``.
-    
+
     Example: ``mode == update``.
-    
+
     * For ``i`` in ``[0, len(indices)]``:
-    
+
     .. math::
        output[p_0, ..., p_{axis-1}, indice[i], p_{axis+1}, ..., p_D] =
     .. math::
        updates[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D]
-    
-    * For ``j! = i``:
-    
+
+    * For ``j != i``:
+
     .. math::
        output[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D] =
     .. math::
        data[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D]
-    
+
     Example: ``mode == add``.
-    
+
     * For ``i`` in ``[0, len(indices)]``:
-    
+
     .. math::
        output[p_0, ..., p_{axis-1}, indice[i], p_{axis+1}, ..., p_D] =
     .. math::
        updates[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D] +
     .. math::
        x[p_0, ..., p_{axis-1}, indice[i], p_{axis+1}, ..., p_D]
-    
-    * For ``j! = i``:
-    
+
+    * For ``j != i``:
+
     .. math::
        output[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D] =
     .. math::
        data[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D]
-    
+
     Parameters
     ----------
     data: tensor<\*D, T> (Required)
@@ -181,7 +186,8 @@ class scatter(Operation):
     mode: const string (Optional)
         * Can be the following modes: ``update``, ``add``, ``sub``, ``mul``,
           ``div``, ``max``, ``min``.
-    
+        * Default value is ``update``.
+
     Returns
     -------
     tensor<\*D, T>
@@ -222,7 +228,11 @@ class scatter(Operation):
         expected_updates_shape = (
             self.data.shape[:axis] + self.indices.shape + self.data.shape[axis + 1 :]
         )
-        np.testing.assert_equal(self.updates.shape, np.array(expected_updates_shape))
+
+        err = "Updates shape {} is incorrect. It should be {}.".format(self.updates.shape, expected_updates_shape)
+        assert is_compatible_symbolic_vector(
+            self.updates.shape, tuple(expected_updates_shape)
+        ), err
 
         return self.data.sym_type
 
@@ -231,12 +241,12 @@ class scatter(Operation):
 class gather_along_axis(Operation):
     """
     Take the values along ``axis`` at locations ``indices``.
-    
+
     .. math::
        idx = indices[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D]
     .. math::
        output[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D] = = x[p_0, ..., p_{axis-1}, idx, p_{axis+1}, ..., p_D]
-    
+
     Parameters
     ----------
     x: tensor<\*D, T> (Required)
@@ -244,12 +254,12 @@ class gather_along_axis(Operation):
         * ``rank(indices) == rank(x)``.
     axis: const i32 (Optional):
         * Default to ``0``.
-    
+
     Returns
     -------
     tensor<\*D, T>:
         * Output tensor has the same shape as ``indices``.
-    
+
     Attributes
     ----------
     T: fp32
@@ -308,29 +318,29 @@ class scatter_along_axis(Operation):
     """
     Scatter ``updates`` to ``data`` at locations ``indices`` at dimension ``axis``
     by operation ``mode``.
-    
+
     Example: ``mode == update``.
-    
+
     * For ``i`` in ``[0, len(indices)]``:
-    
+
     .. math::
        idx = indices[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D]
     .. math::
        output[p_0, ..., p_{axis-1}, idx, p_{axis+1}, ..., p_D] =
     .. math::
        updates[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D]
-    
+
     * For ``j! = i``:
-    
+
     .. math::
        output[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D] =
     .. math::
        data[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D]
-    
+
     Example: ``mode == add``.
-    
+
     * For ``i`` in ``[0, len(indices)]``:
-    
+
     .. math::
        idx = indices[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D]
     .. math::
@@ -339,14 +349,14 @@ class scatter_along_axis(Operation):
        updates[p_0, ..., p_{axis-1}, i, p_{axis+1}, ..., p_D] +
     .. math::
        x[p_0, ..., p_{axis-1}, indice[i], p_{axis+1}, ..., p_D]
-    
+
     * For ``j! = i``:
-    
+
     .. math::
        output[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D] =
     .. math::
        data[p_0, ..., p_{axis-1}, j, p_{axis+1}, ..., p_D]
-    
+
     Parameters
     ----------
     data: tensor<\*D, T> (Required)
@@ -360,7 +370,7 @@ class scatter_along_axis(Operation):
         * Default to ``add``.
         * Can be the following modes: ``update``, ``add``, ``sub``, ``mul``,
           ``div``, ``max``, ``min``.
-    
+
     Returns
     -------
     tensor<\*D, T>
@@ -370,7 +380,7 @@ class scatter_along_axis(Operation):
     ----------
     T: fp32
     """
-    
+
     input_spec = InputSpec(
         data=TensorInputType(),
         indices=IntTensorInputType(),
@@ -409,7 +419,9 @@ class scatter_along_axis(Operation):
         axis = self.axis.val
         axis = axis if axis >= 0 else axis + self.data.rank
 
-        assert self.indices.shape == self.updates.shape
+        assert is_compatible_symbolic_vector(
+            self.indices.shape, self.updates.shape
+        )
         assert self.data.rank == self.indices.rank
         for i in range(self.data.rank):
             if i != axis:
@@ -422,16 +434,16 @@ class scatter_along_axis(Operation):
 class gather_nd(Operation):
     """
     Gather slices from ``x`` according to ``indices``, similar to `tf.gather_nd <https://www.tensorflow.org/api_docs/python/tf/gather_nd>`_.
-    
+
     The ``indices`` is a K-dim tensor, where ``indices[i_0,...,i_{K-2}]`` defines a slice
     of ``x``:
-    
+
     .. math::
        output[i_0, ..., i_{K-2}]= x[indices[i_0, ..., i_{K-2}]]
-    
+
     Where ``K = rank(indices)`` and ``x[indices[i_0, ..., i_{K-2}]]`` has rank
     ``rank(x) - indices.shape[-1]``.
-    
+
     Parameters
     ----------
     x: tensor<\*D,T> (Required)
@@ -445,7 +457,7 @@ class gather_nd(Operation):
     Attributes
     ----------
     T: fp32
-    
+
     References
     ----------
     See `tf.gather_nd <https://www.tensorflow.org/api_docs/python/tf/gather_nd>`_.
@@ -474,18 +486,18 @@ class scatter_nd(Operation):
     The ``indices`` is a K-dim tensor, where ``indices[i_0,...,i_{K-2}]`` defines a
     slice of ``data``, ``K = rank(indices)``, and ``data[indices[i_0, ..., i_{K-2}]]``
     has rank ``rank(data) - indices.shape[-1]``.
-    
+
     * Example: ``mode == update``: The ``output`` is set to ``data`` initially, and
       the op updates ``output`` as follows:
-    
+
     .. math::
        output[indices[i_0, ..., i_{K-2}]]= updates[indices[i_0, ..., i_{K-2}]]
-    
+
     * Example: ``mode == add``. The update rule is:
-    
+
     .. math::
        output[indices[i_0, ..., i_{K-2}]] += updates[indices[i_0, ..., i_{K-2}]]
-    
+
     Parameters
     ----------
     data: tensor<\*D,T> (Required)
@@ -496,7 +508,7 @@ class scatter_nd(Operation):
         * Default to ``add``.
         * Can be the following modes: ``update``, ``add``, ``sub``, ``mul``,
           ``div``, ``max``, ``min``.
-    
+
     Returns
     -------
     tensor<\*D,T>

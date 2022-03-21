@@ -4,28 +4,26 @@
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
 import logging
+
+from .basic_graph_ops import simple_topsort
+from .convert_utils import convert_graph
+from .ssa_passes.tf_passes import tensorflow_passes
 from coremltools.converters.mil.input_types import (
+    _get_shaping_class,
     InputType,
-    TensorType,
     ImageType,
     RangeDim,
-    _get_shaping_class,
+    Shape as InputShape,
+    TensorType
 )
-from coremltools.converters.mil.input_types import Shape as InputShape
 from coremltools.converters.mil.mil.var import Var
-from coremltools.converters.mil.mil import get_new_symbol
 from coremltools.converters.mil.mil.types.symbolic import is_symbolic
-from coremltools.converters.mil.mil.types import is_tensor
-
-from coremltools.converters.mil.mil import types
-from .basic_graph_ops import topsort, simple_topsort
-
-from .convert_utils import convert_graph
-
-from coremltools.converters.mil.mil import Builder as mb
-from coremltools.converters.mil.mil import Program
-from coremltools.converters.mil.mil import Function
-from .ssa_passes.tf_passes import tensorflow_passes
+from coremltools.converters.mil.mil import (
+    Builder as mb,
+    Function,
+    get_new_symbol,
+    Program
+)
 from coremltools.converters._profile_utils import _profile
 
 
@@ -156,15 +154,12 @@ class TFConverter:
                 if inputs[0].name is None:
                     inputs[0].name = tf_placeholder_names[0]
 
-            # filter out those inputs which is not in tf_placeholder_names
-            inputs = [x for x in inputs if x.name in tf_placeholder_names]
-
             # We fill in shapes for user-specified input that doesn't have shape
             for inp in inputs:
                 # Check inputs existence
                 if inp.name is None:
                     raise ValueError(
-                        "Unable to infer input's name or input name was not provided"
+                        "Multiple inputs are found in graph, but no input name was provided"
                     )
                 if inp.name not in tf_placeholder_names:
                     raise ValueError(

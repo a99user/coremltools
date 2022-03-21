@@ -2,12 +2,21 @@
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
+import itertools
+import numpy as np
+import pytest
 
 from coremltools.converters.mil import testing_reqs
-from coremltools.converters.mil.mil import get_new_symbol
-from coremltools.converters.mil.testing_reqs import *
-
+from coremltools.converters.mil.mil import (
+    Builder as mb,
+    get_new_symbol,
+    types
+)
+from coremltools.converters.mil.testing_utils import random_gen, ssa_fn, get_op_types_in_program
 from .testing_utils import UNK_SYM, UNK_VARIADIC, run_compare_builder
+
+if testing_reqs._HAS_TF_1 or testing_reqs._HAS_TF_2:
+    from coremltools.converters.mil.testing_reqs import tf
 
 backends = testing_reqs.backends
 
@@ -125,7 +134,7 @@ class TestCumSum:
     def test_builder_eval(self):
         x_val = random_gen(shape=(1, 2, 3, 4, 5), rand_min=-100, rand_max=100)
         v = mb.cumsum(x=x_val)
-        assert is_close(np.cumsum(x_val, axis=0), v.val)
+        np.testing.assert_allclose(np.cumsum(x_val, axis=0), v.val, atol=1e-04, rtol=1e-05)
 
     @ssa_fn
     def test_invalid_arg(self):
@@ -231,7 +240,7 @@ class TestFill:
     def test_builder_eval(self):
         shape = np.random.randint(low=1, high=3, size=5).astype(np.int32)
         res = mb.fill(shape=shape, value=1991.0).val
-        assert is_close(np.full(shape, fill_value=1991.0), res)
+        np.testing.assert_allclose(np.full(shape, fill_value=1991.0), res, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend, rank, value",
@@ -268,8 +277,6 @@ class TestFill:
         "use_cpu_only, backend", itertools.product([True, False], backends,)
     )
     def test_builder_to_backend_symbolic(self, use_cpu_only, backend):
-        # Test variadic (rdar://59559656)
-
         s_len = get_new_symbol()
         input_placeholders = {
             "shape": mb.placeholder(shape=(s_len,), dtype=types.int32),
@@ -293,6 +300,8 @@ class TestFill:
         )
 
 
+@pytest.mark.skipif(not (testing_reqs._HAS_TF_1 or testing_reqs._HAS_TF_2),
+                    reason="NMS references require TensorFlow")
 class TestNonMaximumSuppression:
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -490,7 +499,6 @@ class TestNonMaximumSuppression:
 
         return out1, out2, out3, out4
 
-    @pytest.mark.xfail(reason="rdar://60390856", run=False)
     @pytest.mark.parametrize(
         ",".join(
             [
@@ -526,6 +534,12 @@ class TestNonMaximumSuppression:
         n_score,
         per_class_suppression,
     ):
+        if backend[0] == "mlprogram" and iou_threshold_percentile == 0:
+            pytest.xfail("rdar://78080118")
+
+        if backend == ("mlprogram", "fp16"):
+            pytest.xfail("CPU: rdar://80662705 and GPU: rdar://80661262")
+
         n_boxes_in, n_boxes_out = n_boxes
         boxes_val = random_gen((n_batch, n_boxes_in, 4), 0, 100)
         scores_val = random_gen((n_batch, n_boxes_in, n_score), -100, 100)
@@ -599,7 +613,7 @@ class TestNonMaximumSuppression:
 
 class TestNonZero:
     @pytest.mark.parametrize(
-        "use_cpu_only, backend", itertools.product([True, False], ["nn_proto"])
+        "use_cpu_only, backend", itertools.product([True, False], backends)
     )
     def test_builder_to_backend_smoke(self, use_cpu_only, backend):
         x_val = np.array([[3, 0, 0], [0, 4, 0], [5, 6, 0]], dtype=np.float32)
@@ -609,7 +623,7 @@ class TestNonZero:
         def build(x):
             return [mb.non_zero(x=x)]
 
-        expected_output_types = [(UNK_SYM, 2, types.int)]
+        expected_output_types = [(UNK_SYM, 2, types.int32)]
         expected_outputs = [np.array(np.transpose(np.nonzero(x_val)))]
 
         run_compare_builder(
@@ -626,7 +640,7 @@ class TestNonZero:
     def test_builder_eval(self):
         x_val = np.random.randint(low=-1, high=2, size=(6, 1, 7))
         res = mb.non_zero(x=x_val)
-        assert is_close(np.transpose(np.nonzero(x_val)), res.val)
+        np.testing.assert_allclose(np.transpose(np.nonzero(x_val)), res.val, atol=1e-04, rtol=1e-05)
 
 
 class TestOneHot:
@@ -639,7 +653,7 @@ class TestOneHot:
 
         input_placeholders = {
             "x": mb.placeholder(shape=x.shape, dtype=types.int32),
-            "y": mb.placeholder(shape=(), dtype=types.int32),
+            "y": mb.placeholder(shape=(1,), dtype=types.int32),
         }
 
         input_values = {"x": x, "y": depth}
@@ -652,7 +666,7 @@ class TestOneHot:
                     indices=x, one_hot_vector_size=4, on_value=1.0, off_value=0.1
                 ),
                 mb.one_hot(
-                    indices=x, one_hot_vector_size=y, on_value=1, off_value=9
+                    indices=x, one_hot_vector_size=mb.squeeze(x=y), on_value=1, off_value=9
                 ),
             ]
 
@@ -861,7 +875,7 @@ class TestPad:
                 ],
                 dtype=np.float32,
             )
-            assert is_close(expected_outputs, v.val)
+            np.testing.assert_allclose(expected_outputs, v.val, atol=1e-04, rtol=1e-05)
 
         def test_reflect_mode():
             x_val = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
@@ -877,7 +891,7 @@ class TestPad:
                 ],
                 dtype=np.float32,
             )
-            assert is_close(expected_outputs, v.val)
+            np.testing.assert_allclose(expected_outputs, v.val, atol=1e-04, rtol=1e-05)
 
         def test_replicate_mode():
             x_val = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
@@ -893,14 +907,14 @@ class TestPad:
                 ],
                 dtype=np.float32,
             )
-            assert is_close(expected_outputs, v.val)
+            np.testing.assert_allclose(expected_outputs, v.val, atol=1e-04, rtol=1e-05)
 
         def test_constant_general():
             x_val = np.arange(12, dtype=np.float32).reshape([2, 2, 3])
             pad = np.array([[1, 1], [2, 2], [1, 1]], dtype=np.int32)
             v = mb.pad(x=x_val, pad=pad.reshape(-1), mode="constant", constant_val=0.0)
             expected_outputs = np.pad(x_val, pad, mode="constant")
-            assert is_close(expected_outputs, v.val)
+            np.testing.assert_allclose(expected_outputs, v.val, atol=1e-04, rtol=1e-05)
 
         # Test different modes
         test_constant_mode()
@@ -917,22 +931,23 @@ class TestRange1d:
         x = 15.0
         y = 5.0
         z = 2.0
+        # Model inputs must have rank at least 1
         input_placeholders = {
-            "x": mb.placeholder(shape=()),
-            "y": mb.placeholder(shape=()),
-            "z": mb.placeholder(shape=()),
+            "x": mb.placeholder(shape=(1,)),
+            "y": mb.placeholder(shape=(1,)),
+            "z": mb.placeholder(shape=(1,)),
         }
         input_values = {"x": x, "y": y, "z": z}
 
         def build(x, y, z):
             return [
-                mb.range_1d(start=y, end=15.0, step=2.0),
-                mb.range_1d(start=y, end=15.0, step=z),
-                mb.range_1d(start=y, end=x, step=2.0),
-                mb.range_1d(start=y, end=x, step=z),
-                mb.range_1d(start=5.0, end=15.0, step=z),
-                mb.range_1d(start=5.0, end=x, step=2.0),
-                mb.range_1d(start=5.0, end=x, step=z),
+                mb.range_1d(start=mb.squeeze(x=y), end=15.0, step=2.0),
+                mb.range_1d(start=mb.squeeze(x=y), end=15.0, step=mb.squeeze(x=z)),
+                mb.range_1d(start=mb.squeeze(x=y), end=mb.squeeze(x=x), step=2.0),
+                mb.range_1d(start=mb.squeeze(x=y), end=mb.squeeze(x=x), step=mb.squeeze(x=z)),
+                mb.range_1d(start=5.0, end=15.0, step=mb.squeeze(x=z)),
+                mb.range_1d(start=5.0, end=mb.squeeze(x=x), step=2.0),
+                mb.range_1d(start=5.0, end=mb.squeeze(x=x), step=mb.squeeze(x=z)),
             ]
 
         expected_output_types = [
@@ -965,10 +980,46 @@ class TestRange1d:
             backend=backend,
         )
 
+    @pytest.mark.parametrize(
+        "use_cpu_only, backend", itertools.product([True, False], backends,)
+    )
+    def test_large_array(self, use_cpu_only, backend):
+        
+        input_placeholders = {
+            "x": mb.placeholder(shape=(1,)), # dummpy input
+        }
+        input_values = {"x": 0.5}
+
+        def build(x):
+            return [mb.range_1d(start=0.0, end=2000000.0, step=1.0)]
+
+        expected_output_types = [
+            (2000000, types.fp32)
+        ]
+
+        expected_outputs = [
+            np.arange(0.0, 2000000.0, 1.0),
+        ]
+
+        mlmodel = run_compare_builder(
+            build,
+            input_placeholders,
+            input_values,
+            expected_output_types,
+            expected_outputs,
+            use_cpu_only=use_cpu_only,
+            backend=backend,
+        )
+
+        # verify that the range_1d op is not const folded
+        prog = mlmodel._mil_program
+        ops = get_op_types_in_program(prog)
+        assert ops == ["range_1d", "identity"]
+
     @ssa_fn
     def test_builder_eval(self):
         v = mb.range_1d(start=5, end=15, step=2)
-        assert is_close(np.arange(5, 15, 2), v.val)
+        np.testing.assert_allclose(np.arange(5, 15, 2), v.val, atol=1e-04, rtol=1e-05)
 
 
 class TestTile:
@@ -984,19 +1035,16 @@ class TestTile:
         def build(x):
             return [
                 mb.tile(x=x, reps=(1, 1)),
-                mb.tile(x=x, reps=(2,)),
                 mb.tile(x=x, reps=(2, 1)),
             ]
 
         expected_output_types = [
             (2, 3, types.fp32),
-            (2, 6, types.fp32),
             (4, 3, types.fp32),
         ]
 
         expected_outputs = [
             x,
-            np.array([[1, 2, 3, 1, 2, 3], [4, 5, 6, 4, 5, 6]], dtype=np.float32),
             np.array([[1, 2, 3], [4, 5, 6], [1, 2, 3], [4, 5, 6]], dtype=np.float32),
         ]
 
@@ -1014,10 +1062,9 @@ class TestTile:
     @ssa_fn
     def test_builder_eval(self):
         x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-        v = mb.tile(x=x, reps=(2,))
-        assert is_close(np.tile(x, reps=(2,)), v.val)
+        v = mb.tile(x=x, reps=(1, 2))
+        np.testing.assert_allclose(np.tile(x, reps=(1, 2)), v.val, atol=1e-04, rtol=1e-05)
 
-@pytest.mark.skip(reason="rdar://65198011 (Re-enable Conv3dTranspose and DynamicTile unit tests)")
 class TestDynamicTile:
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -1029,9 +1076,9 @@ class TestDynamicTile:
         rep3 = np.array([2, 3]).astype(np.int32)
         input_placeholders = {
             "x": mb.placeholder(shape=x.shape),
-            "reps1": mb.placeholder(shape=rep1.shape),
-            "reps2": mb.placeholder(shape=rep2.shape),
-            "reps3": mb.placeholder(shape=rep3.shape),
+            "reps1": mb.placeholder(shape=rep1.shape, dtype=types.int32),
+            "reps2": mb.placeholder(shape=rep2.shape, dtype=types.int32),
+            "reps3": mb.placeholder(shape=rep3.shape, dtype=types.int32),
         }
 
         input_values = {"x": x, "reps1": rep1, "reps2": rep2, "reps3": rep3}
@@ -1121,12 +1168,12 @@ class TestTopK:
         val = np.array([[-1.0, 7.0, -3.0], [4.0, -5.0, 8.0]], dtype=np.float32)
         res_values, res_indices = mb.topk(x=val, k=1, axis=0)
         ref_values, ref_indices = np_topk(x=val, k=1, axis=0)
-        assert is_close(ref_values, res_values.val)
-        assert is_close(ref_indices, res_indices.val)
+        np.testing.assert_allclose(ref_values, res_values.val, atol=1e-04, rtol=1e-05)
+        np.testing.assert_allclose(ref_indices, res_indices.val, atol=1e-04, rtol=1e-05)
         res_values, res_indices = mb.topk(x=val, k=2, axis=-1, ascending=True)
         ref_values, ref_indices = np_topk(x=val, k=2, axis=-1, ascending=True)
-        assert is_close(ref_values, res_values.val)
-        assert is_close(ref_indices, res_indices.val)
+        np.testing.assert_allclose(ref_values, res_values.val, atol=1e-04, rtol=1e-05)
+        np.testing.assert_allclose(ref_indices, res_indices.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -1240,7 +1287,7 @@ class TestFlatten2d:
         t = np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.float32)
         f = mb.flatten2d(x=t)
         expected_f = np.array([[1, 2, 3, 4, 5, 6]], dtype=np.float32)
-        assert is_close(expected_f, f.val)
+        np.testing.assert_allclose(expected_f, f.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -1248,7 +1295,6 @@ class TestFlatten2d:
     def test_builder_to_backend_symbolic(self, use_cpu_only, backend):
         s0 = get_new_symbol()
 
-        # Test variadic (rdar://59559656)
         input_placeholders = {
             "x": mb.placeholder(shape=(s0, 4, 5, 6)),
         }
@@ -1311,7 +1357,7 @@ class TestShape:
         t = np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.float32)
         f = mb.shape(x=t)
         expected_f = np.array([1, 2, 3], dtype=np.float32)
-        assert is_close(expected_f, f.val)
+        np.testing.assert_allclose(expected_f, f.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend, input_type", itertools.product([True, False], backends, ["int32", "float32"])
@@ -1322,7 +1368,6 @@ class TestShape:
 
         s0 = get_new_symbol()
 
-        # Test variadic (rdar://59559656)
         input_placeholders = {
             "x": mb.placeholder(shape=(s0, 4, 5, 6), dtype=mb_type),
         }
@@ -1385,7 +1430,7 @@ class TestIdentity:
         t = np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.float32)
         f = mb.identity(x=t)
         expected_f = np.array([[[1, 2, 3], [4, 5, 6]]], dtype=np.float32)
-        assert is_close(expected_f, f.val)
+        np.testing.assert_allclose(expected_f, f.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -1452,4 +1497,5 @@ class TestArgSort:
     def test_builder_eval(self):
         x_val = random_gen(shape=(1, 3, 2, 2), rand_min=-100, rand_max=100)
         res = mb.argsort(x=x_val, axis=-3)
-        assert is_close(np.argsort(x_val, axis=-3), res.val)
+        # The default np argsort mode is ascending, which is opposite to MIL's argsort op.
+        np.testing.assert_allclose(np.argsort(-x_val, axis=-3), res.val, atol=1e-04, rtol=1e-05)

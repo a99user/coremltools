@@ -185,7 +185,7 @@ class TreeEnsembleBase(object):
         spec_node = self.tree_parameters.nodes.add()
         spec_node.treeId = tree_id
         spec_node.nodeId = node_id
-        spec_node.branchFeatureIndex = feature_index
+        spec_node.branchFeatureIndex = int(feature_index)
         spec_node.branchFeatureValue = feature_value
         spec_node.trueChildNodeId = true_child_id
         spec_node.falseChildNodeId = false_child_id
@@ -258,6 +258,9 @@ class TreeEnsembleRegressor(TreeEnsembleBase):
 
     Examples
     --------
+    
+    In the following example, the code saves the model to disk, which is a
+    recommended practice but not required.
 
     .. sourcecode:: python
 
@@ -343,6 +346,9 @@ class TreeEnsembleClassifier(TreeEnsembleBase):
 
     Examples
     --------
+
+    In the following example, the code saves the model to disk, which is a
+    recommended practice but not required.
 
     .. sourcecode:: python
 

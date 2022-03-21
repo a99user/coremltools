@@ -2,13 +2,14 @@
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
-
-from coremltools.converters.mil import testing_reqs
-from coremltools.converters.mil.testing_reqs import *
+import itertools
+import pytest
+import numpy as np
 
 from .testing_utils import UNK_SYM, run_compare_builder
-
-backends = testing_reqs.backends
+from coremltools.converters.mil.mil import Builder as mb, types
+from coremltools.converters.mil.testing_reqs import backends
+from coremltools.converters.mil.testing_utils import ssa_fn
 
 
 class TestSliceByIndex:
@@ -55,7 +56,7 @@ class TestSliceByIndex:
             mb.slice_by_index(
                 x=x_val, begin=[1, 1, 1], end=[2, 3, 4], stride=[1, 1, 2]
             ),
-            mb.slice_by_index(x=x_val, begin=[-1, -3, -3], end=[-1, -1, -1]),
+            mb.slice_by_index(x=x_val, begin=[-3, -3, -3], end=[-1, -1, -1]),
             mb.slice_by_index(x=x_val, begin=[0, 0, -3], end=[-1, -2, -2]),
             mb.slice_by_index(
                 x=x_val, begin=[-1, -1, -1], end=[0, 1, -3], stride=[-2, -1, -3]
@@ -205,4 +206,4 @@ class TestSliceByIndex:
             x_val[..., ::-1],
         ]
         for idx in range(len(v)):
-            assert is_close(ans[idx], v[idx].val)
+            np.testing.assert_allclose(ans[idx], v[idx].val, atol=1e-04, rtol=1e-05)

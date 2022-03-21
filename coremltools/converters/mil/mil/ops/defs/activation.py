@@ -2,10 +2,10 @@
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
+import math
 import numpy as np
-import scipy
 
-from coremltools.converters.mil.mil import Operation, VALUE
+from coremltools.converters.mil.mil import types
 from coremltools.converters.mil.mil.input_type import (
     DefaultInputs,
     FloatInputType,
@@ -14,8 +14,8 @@ from coremltools.converters.mil.mil.input_type import (
     ScalarOrTensorInputType,
     StringInputType,
     TensorInputType,
-    )
-from coremltools.converters.mil.mil.operation import precondition
+)
+from coremltools.converters.mil.mil.operation import Operation, precondition, VALUE
 from coremltools.converters.mil.mil.ops.defs._op_reqs import register_op
 
 from .elementwise_unary import elementwise_unary
@@ -169,7 +169,9 @@ class gelu(Operation):
         elif self.mode.val == "SIGMOID_APPROXIMATION":
             return self.x.val * (1 / (1 + np.exp(-(1.702 * self.x.val))))
         else:
-            return 0.5 * self.x.val * (1 + scipy.special.erf(self.x.val / np.sqrt(2)))
+            sqaure_root_of_2 = np.sqrt(2)
+            vfunc = np.vectorize(lambda x: 0.5 * x * (1 + math.erf(x / sqaure_root_of_2)))
+            return vfunc(self.x.val)
 
     def type_inference(self):
         allowed_values = {"EXACT", "TANH_APPROXIMATION", "SIGMOID_APPROXIMATION"}
@@ -491,6 +493,31 @@ class sigmoid_hard(Operation):
     def type_inference(self):
         return self.x.sym_type
 
+@register_op(doc_str="")
+class silu(Operation):
+    """
+    Sigmoid Linear Unit, element-wise apply the SiLU or Swish operation ``x * sigmoid(x)``.
+
+    Parameters
+    ----------
+    x: tensor<*, T>
+
+    Returns
+    -------
+    tensor<*, T>
+
+    Attributes
+    ----------
+    T: fp32
+    """
+
+    input_spec = InputSpec(x=TensorInputType(),)
+
+    def __init__(self, **kwargs):
+        super(silu, self).__init__(**kwargs)
+
+    def type_inference(self):
+        return types.tensor(self.x.dtype, tuple(self.x.shape))
 
 @register_op(doc_str="")
 class softplus(elementwise_unary):
@@ -619,8 +646,9 @@ class softmax(Operation):
     def value_inference(self):
         x = self.x.val
         axis = self.axis.val
-        return scipy.special.softmax(x, axis=axis)
-
+        max_vals = np.max(x, axis=axis, keepdims=True)
+        temp = np.exp(x - max_vals)
+        return temp / np.sum(temp, axis=axis, keepdims=True)
 
 @register_op(doc_str="")
 class softsign(elementwise_unary):

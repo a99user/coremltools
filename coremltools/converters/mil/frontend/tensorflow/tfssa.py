@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 #  Copyright (c) 2020, Apple Inc. All rights reserved.
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
@@ -109,8 +107,6 @@ class SSAFunction(object):
 
         # we use function entry and exit points if available
         # otherwise we find graph entry and exit points
-        # TODO: op name should be fixed here.
-        #       <rdar://problem/57081966> Remove wrappers that are used for old tfssa
         enters = [
             n.name for n in self.graph.values() if ("entry" in n.op or "Entry" in n.op)
         ]

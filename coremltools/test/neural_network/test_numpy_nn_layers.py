@@ -1,3 +1,7 @@
+# Copyright (c) 2021, Apple Inc. All rights reserved.
+#
+# Use of this source code is governed by a BSD-3-clause license that can be
+# found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
 import itertools
 import math
@@ -236,7 +240,7 @@ class SimpleTest(CorrectnessTest):
         }
 
         self._test_model(builder.spec, input, expected)
-        self.assertEquals(len(input_dim), builder._get_rank("output"))
+        self.assertEqual(len(input_dim), builder._get_rank("output"))
 
     def test_LRN(self):
         input_dim = (1, 3, 3)
@@ -1935,10 +1939,6 @@ class NewLayersSimpleTest(CorrectnessTest):
 
             self._test_model(builder.spec, inputs, expected, useCPUOnly=cpu_only)
 
-    @pytest.mark.xfail(reason="[GitLab CI failure: test_floor_gpu](rdar://64311149)")
-    def test_floor_gpu(self):
-        self.test_floor_cpu(cpu_only=False)
-
     def test_round_cpu(self, cpu_only=True):
         for rank in range(1, 6):
             shape = np.random.randint(low=2, high=8, size=rank)
@@ -2421,9 +2421,6 @@ class NewLayersSimpleTest(CorrectnessTest):
     def test_tile_gpu(self):
         self.test_tile_cpu(cpu_only=False)
 
-    @pytest.mark.skip(
-        reason="rdar://65198011 (Re-enable Conv3dTranspose and DynamicTile unit tests)"
-    )
     def test_dynamic_tile_cpu(self, cpu_only=True):
         for rank in range(1, 6):
             input_shape = np.random.randint(low=2, high=5, size=rank)
@@ -2890,7 +2887,6 @@ class NewLayersSimpleTest(CorrectnessTest):
     def test_const_pad_mode2_gpu(self):
         self.test_const_pad_mode2_cpu(cpu_only=False)
 
-    @pytest.mark.xfail(reason="rdar://problem/59486372", run=False)
     def test_nms_cpu(self, cpu_only=True):
         def _compute_iou_matrix(boxes):
             # input is (N,4), in order [center_w, center_h, width, height]
@@ -6706,18 +6702,19 @@ class IOS14SingleLayerTests(CorrectnessTest):
 
         # Get result from PyTorch
         x = torch.from_numpy(np.reshape(input_tensor, (1, 1, h, w)))
-        m = torch.nn.Upsample(
+        pytorch_output = torch.nn.functional.interpolate(
+            x,
             scale_factor=(scale_h, scale_w),
             mode="bilinear",
             align_corners=align_corners,
+            recompute_scale_factor=True,
         )
-        pytorch_output = m(x)
 
         # Expect PyTorch output matches CoreML output
         expected = {"output": pytorch_output.numpy()}
 
         self._test_model(builder.spec, input, expected, useCPUOnly=cpu_only)
-        self.assertEquals(len(input_dim), builder._get_rank("output"))
+        self.assertEqual(len(input_dim), builder._get_rank("output"))
 
     def test_slice_by_size_cpu(self, cpu_only=True):
 

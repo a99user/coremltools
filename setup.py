@@ -66,20 +66,17 @@ setup(
     url="https://github.com/apple/coremltools",
     packages=find_packages(),
     package_data={
-        "": ["LICENSE.txt", "README.md", "libcaffeconverter.so", "libcoremlpython.so"]
+        "": ["LICENSE.txt", "README.md", "libmilstoragepython.so", "libcoremlpython.so", "libmodelpackage.so"]
     },
     install_requires=[
         "numpy >= 1.14.5",
         "protobuf >= 3.1.0",
         "sympy",
-        "scipy",
         "tqdm",
         "packaging",
     ],
-    entry_points={"console_scripts": ["coremlconverter = coremltools:_main"]},
     classifiers=[
         "Development Status :: 5 - Production/Stable",
-        "Intended Audience :: End Users/Desktop",
         "Intended Audience :: Developers",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: POSIX :: Linux",
@@ -87,6 +84,7 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Topic :: Scientific/Engineering",
         "Topic :: Software Development",
     ],

@@ -12,7 +12,6 @@ import numpy as np
 from coremltools.converters.mil.mil.types.symbolic import any_symbolic
 from .program import Program, Placeholder
 from .block import curr_block, Function
-from .operation import is_internal_input
 from .input_type import (
     _InputType,
     InternalStringInputType,
@@ -27,13 +26,6 @@ from .input_type import (
 from .var import InternalVar, Var
 
 
-def get_const_mode(val):
-    # Heuristics to decide between file_value and immediate_value
-    if isinstance(val, (np.ndarray, np.generic)) and val.size > 10:
-        return "file_value"
-    return "immediate_value"
-
-
 def is_python_value(val):
     return (
         isinstance(val, (np.generic, np.ndarray))
@@ -46,21 +38,30 @@ def is_python_value(val):
 
 class Builder:
     """
-    Singleton builder.
+    This class is a singleton builder to construct a MIL program. For more 
+    information, see `Create a MIL program <https://coremltools.readme.io/docs/model-intermediate-language#create-a-mil-program>`_.
+    
+    Importing ``.ops`` triggers the installation of all MIL ops into the Builder.
+    For details on each op, see `MIL ops <https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html>`_.
 
-    Example:
+    Examples
+    --------
 
-    from coremltools.converters.mil.mil import Builder as mb
-    from coremltools.converters.mil.mil import Program, Function
+    >>> from coremltools.converters.mil.mil import Builder as mb
+    >>> from coremltools.converters.mil.mil import Program, Function
 
-    prog = Program()
-    func_inputs = {"x": mb.placeholder(_shape=[2,3]),
-                   "y": mb.placeholder(_shape=[2,3])}
-    with Function(func_inputs) as ssa_fun:
-      x, y = ssa_fun.inputs['x'], ssa_fun.inputs['x']
-      res_var = mb.add(x=x, y=y) # created within ssa_fun block
-      ssa_fun.set_outputs([res_var])
-    prog.add_function("main", ssa_fun)
+    >>> prog = Program()
+    >>> func_inputs = {"x": mb.placeholder(shape=[2,3]),
+    >>>                "y": mb.placeholder(shape=[2,3])}
+    >>> with Function(func_inputs) as ssa_fun:
+    >>>   x, y = ssa_fun.inputs['x'], ssa_fun.inputs['x']
+    >>>   res_var = mb.add(x=x, y=y) # created within ssa_fun block
+    >>>   ssa_fun.set_outputs([res_var])
+    >>> prog.add_function("main", ssa_fun)
+    
+    >>> # Importing ops triggers installation of all ops into Builder.
+    >>> from .ops import defs as _ops
+
     """
 
     name_count = defaultdict(int)
@@ -90,9 +91,8 @@ class Builder:
             )
             raise ValueError(msg.format(name, val))
         const_name = cls._get_free_name(name)
-        mode = get_const_mode(val)
         logging.debug("Adding const op '{}'".format(const_name))
-        output_var = cls.const(mode=mode, val=val, name=const_name,
+        output_var = cls.const(val=val, name=const_name,
             before_op=before_op)
         return output_var
 
@@ -166,7 +166,8 @@ class Builder:
             "Adding op '{}' of type {}".format(kwargs["name"], op_cls.__name__)
         )
         before_op = kwargs.get("before_op", None)
-        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        # Shallow copy list inputs to ensure op inputs are immutable
+        kwargs = {k: v if not isinstance(v, (list, tuple)) else v[:] for k, v in kwargs.items() if v is not None}
         kwargs.update(cls._create_vars(
             input_spec=op_cls.input_spec,
             op_name=kwargs["name"], before_op=before_op,
@@ -175,7 +176,8 @@ class Builder:
 
         # Initialize optional input Vars if it wasn't in kwargs
         default_inputs = new_op.default_inputs()
-        missing_optional_vals = {k: v for k, v in default_inputs.items()
+        # Shallow copy list inputs to ensure op inputs are immutable
+        missing_optional_vals = {k: v if not isinstance(v, (list, tuple)) else v[:] for k, v in default_inputs.items()
             if k not in kwargs and v is not None}
         missing_optional_vars = cls._create_vars(
             input_spec=op_cls.input_spec,
@@ -192,8 +194,8 @@ class Builder:
         return new_op.outputs
 
     @staticmethod
-    def placeholder(shape, dtype=None):
-        return Placeholder(shape, dtype)
+    def placeholder(shape, dtype=None, allow_rank0_input=False):
+        return Placeholder(shape, dtype, allow_rank0_input=allow_rank0_input)
 
     @staticmethod
     def TensorSpec(shape, dtype=None):
@@ -202,11 +204,24 @@ class Builder:
     @staticmethod
     def program(input_specs=None):
         """
-        Usage:
+        
+        The ``mb.program`` decorator creates a MIL program with a single 
+        function (``main``). The input to ``main`` is a tensor.
+        
+        Parameters
+        ----------
+        
+        input_specs: TensorSpec
+             Describes a tensor.
+        
+        
+        Examples
+        --------
 
-        @mb.program(input_specs=[mb.TensorSpec(shape=(1,2))])
-        def prog(a):
-            return mb.add(x=a, y=2)
+        >>> @mb.program(input_specs=[mb.TensorSpec(shape=(1,2))])
+        >>> def prog(a):
+        >>>     return mb.add(x=a, y=2)
+
         """
         if input_specs is None:
             input_specs = []
@@ -237,5 +252,5 @@ class Builder:
         return wrapper
 
 
-"""importing ops triggers installation of all ops into Builder"""
+# importing ops triggers installation of all ops into Builder
 from .ops import defs as _ops

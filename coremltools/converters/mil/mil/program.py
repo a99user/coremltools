@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 #  Copyright (c) 2020, Apple Inc. All rights reserved.
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
@@ -8,6 +6,7 @@
 import logging as _logging
 import numpy as _np
 import sympy as _sm
+
 from . import types
 from .block import Function
 from .var import Var
@@ -15,7 +14,7 @@ from .types.symbolic import k_used_symbols, k_num_internal_syms
 from coremltools.converters.mil.input_types import InputType
 
 
-class Program(object):
+class Program:
     def __init__(self):
         self.main_input_types = []
         self.functions = {}
@@ -58,7 +57,7 @@ class Program(object):
         return found_ops
 
     def validate(self):
-        for f_name, f in self.functions.items():
+        for f in self.functions.values():
             f.validate()
 
     def __getitem__(self, func_name):
@@ -77,18 +76,27 @@ class Program(object):
         return s
 
 
-class Placeholder(object):
+class Placeholder:
     counter = 0
 
-    def __init__(self, sym_shape, dtype=None, name=None):
+    def __init__(self, sym_shape, dtype=None, name=None, allow_rank0_input=False):
         """
         sym_shape: () or [] for scalar. list, tuple, np.ndarray for tensor. May
         contain Symbol as symbolic shape (but not string).
 
         dtype: types.float or other scalar builtin types.
+        allow_rank0_input: A flag that allows the rank 0 placeholder.
         """
         if not isinstance(sym_shape, (list, tuple, _np.ndarray)):
             raise ValueError("Illegal shape for Placeholder: {}".format(sym_shape))
+
+        if len(sym_shape) == 0:
+            if not allow_rank0_input:
+                raise ValueError('Rank-0 (input {}) is unsupported'.format(name))
+            else:
+                _logging.warning('Rank-0 (input {}) is unsupported in coreml. You might run into error while\
+                running this model'.format(name))
+
         for i, d in enumerate(sym_shape):
             if not isinstance(d, (_np.generic, int, Symbol)):
                 msg = 'Placeholder dim {} in {} is not integer or symbol'
@@ -153,9 +161,10 @@ def get_new_symbol(name=None):
 def get_existing_symbol(name):
     global k_used_symbols
     if name not in k_used_symbols:
-      msg = 'Symbol name {} does not exist'
-      raise ValueError(msg.format(name))
+        msg = 'Symbol name {} does not exist'
+        raise ValueError(msg.format(name))
     return k_used_symbols[name]
+
 
 class Symbol(_sm.Symbol):
     def __init__(self, sym_name):

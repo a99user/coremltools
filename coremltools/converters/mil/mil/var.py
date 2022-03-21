@@ -4,10 +4,8 @@
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
 from coremltools.converters.mil.mil import types
-from coremltools.converters.mil.mil.types.symbolic import (
-    is_symbolic,
-    any_symbolic,
-)
+from coremltools.converters.mil.mil.types import builtin_to_string
+from coremltools.converters.mil.mil.types.symbolic import any_symbolic
 
 
 class Var(object):
@@ -17,9 +15,11 @@ class Var(object):
 
     Example Usage:
 
-    from coremltools.converters.mil.mil import Builder as mb
-    from coremltools.converters.mil.mil import Function
-    from coremltools.converters.mil.mil import types
+    from coremltools.converters.mil.mil import (
+        Builder as mb,
+        Function,
+        types
+    )
 
     func_inputs = {"a": mb.placeholder(shape=(1,2)),
                    "b": mb.placeholder(shape=(1,2)) }
@@ -182,6 +182,9 @@ class Var(object):
 
     def set_name(self, name):
         self.name = name
+
+    def is_tensor_or_scalar_of(self, dtype: str):
+        return (types.is_tensor(self.sym_type) or types.is_scalar(self.sym_type)) and builtin_to_string(self.dtype) == dtype
 
     def __str__(self):
         return "%" + self.name + ": " + self.shape_str() + self.type_str()

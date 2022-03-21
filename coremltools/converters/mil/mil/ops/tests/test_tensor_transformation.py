@@ -2,14 +2,23 @@
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
-
-from coremltools.converters.mil import testing_reqs
-from coremltools.converters.mil.mil import get_new_symbol, get_new_variadic_symbol
-from coremltools.converters.mil.testing_reqs import *
+import itertools
+import pytest
+import numpy as np
 
 from .testing_utils import UNK_SYM, UNK_VARIADIC, run_compare_builder
+from coremltools._deps import _HAS_TORCH
+from coremltools.converters.mil import testing_reqs
+from coremltools.converters.mil.mil import (
+    Builder as mb,
+    get_new_symbol,
+    types
+)
+from coremltools.converters.mil.testing_reqs import backends
+from coremltools.converters.mil.testing_utils import ssa_fn
 
-backends = testing_reqs.backends
+if _HAS_TORCH:
+    import torch
 
 
 class TestDepthToSpace:
@@ -130,17 +139,17 @@ class TestExpandDims:
     def test_builder_eval(self):
         x_val = np.random.rand(1, 6)
         v1 = mb.expand_dims(x=x_val, axes=[2])
-        assert is_close(np.expand_dims(x_val, 2), v1.val)
+        np.testing.assert_allclose(np.expand_dims(x_val, 2), v1.val, atol=1e-04, rtol=1e-05)
 
         v2 = mb.expand_dims(x=x_val, axes=[-1])
-        assert is_close(np.expand_dims(x_val, -1), v2.val)
+        np.testing.assert_allclose(np.expand_dims(x_val, -1), v2.val, atol=1e-04, rtol=1e-05)
 
         v3 = mb.expand_dims(x=x_val, axes=[-1, -2])
         ref = np.expand_dims(np.expand_dims(x_val, -1), -1)
-        assert is_close(ref, v3.val)
+        np.testing.assert_allclose(ref, v3.val, atol=1e-04, rtol=1e-05)
 
         v4 = mb.expand_dims(x=x_val, axes=[0, -1, -2])
-        assert is_close(np.reshape(x_val, (1, 1, 6, 1, 1)), v4.val)
+        np.testing.assert_allclose(np.reshape(x_val, (1, 1, 6, 1, 1)), v4.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend, rank_and_axis",
@@ -275,10 +284,10 @@ class TestReshape:
         t = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         r = mb.reshape(x=t, shape=[3, 2])
         expected_r = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float32)
-        assert is_close(expected_r, r.val)
+        np.testing.assert_allclose(expected_r, r.val, atol=1e-04, rtol=1e-05)
         r2 = mb.reshape(x=t, shape=[2, -1])
         expected_r2 = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-        assert is_close(expected_r2, r2.val)
+        np.testing.assert_allclose(expected_r2, r2.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -286,13 +295,9 @@ class TestReshape:
     def test_builder_to_backend_symbolic(self, use_cpu_only, backend):
         s0 = get_new_symbol()
         s_len = get_new_symbol()
-        s1 = get_new_variadic_symbol()
 
-        # Test variadic (rdar://59559656)
         input_placeholders = {
             "x": mb.placeholder(shape=(2, s0)),
-            # TODO: variadic (rdar://59559656)
-            # "x2": mb.placeholder(shape=(s1, 2)),
             "shape": mb.placeholder(shape=(3,), dtype=types.int32),
             "shape2": mb.placeholder(shape=(s_len,), dtype=types.int32),
         }
@@ -302,8 +307,6 @@ class TestReshape:
                 mb.reshape(x=x, shape=[2, -1]),
                 mb.reshape(x=x, shape=[1, -1]),
                 mb.reshape(x=x, shape=[2, 1, 1, -1]),
-                # TODO: variadic (rdar://59559656)
-                # mb.reshape(x=x2, shape=[2, 1, 1]),
                 mb.reshape(x=x, shape=shape),
                 mb.reshape(x=x, shape=shape2),
             ]
@@ -312,8 +315,6 @@ class TestReshape:
             (2, s0, types.fp32),
             (1, 2 * s0, types.fp32),
             (2, 1, 1, s0, types.fp32),
-            # TODO: variadic (rdar://59559656)
-            # (2, 1, 1, types.fp32),
             (UNK_SYM, UNK_SYM, UNK_SYM, types.fp32),
             (UNK_VARIADIC, types.fp32),
         ]
@@ -321,17 +322,12 @@ class TestReshape:
             np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32),
             np.array([[1, 2, 3, 4, 5, 6]], dtype=np.float32),
             np.array([[[[1.0, 2.0, 3.0]]], [[[4.0, 5.0, 6.0]]]], dtype=np.float32),
-            # TODO: variadic (rdar://59559656)
-            # np.array([[1, 2, 3],
-            #          [4, 5, 6]], dtype=np.float32),
             np.array([[[1, 2, 3]], [[4, 5, 6]]], dtype=np.float32),
             np.array([[[1, 2, 3]], [[4, 5, 6]]], dtype=np.float32),
         ]
 
         input_values = {
             "x": np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32),
-            # TODO: variadic (rdar://59559656)
-            # "x2": np.array([[[1, 2, 3],[4, 5, 6]]], dtype=np.float32),
             "shape": np.array([2, 1, 3], dtype=np.float32),
             "shape2": np.array([2, 1, 3], dtype=np.float32),
         }
@@ -379,7 +375,7 @@ class TestReverse:
     def test_builder_eval(self):
         val = np.array([[-1.0, 7.0, -3.0], [4.0, -5.0, 8.0]], dtype=np.float32)
         res = mb.reverse(x=val, axes=[0])
-        assert is_close(np.flip(val, axis=0), res.val)
+        np.testing.assert_allclose(np.flip(val, axis=0), res.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -571,9 +567,9 @@ class TestSliceBySize:
         v_1 = mb.slice_by_size(x=x, begin=(0, 1, 0), size=(-1, -1, -1))
         v_2 = mb.slice_by_size(x=x, begin=(0, 1, 0), size=(-1, -1, 3))
         v_3 = mb.slice_by_size(x=x, begin=(0, -2, 0), size=(-1, -1, 3))
-        assert is_close(x[:, 1:, :], v_1.val)
-        assert is_close(x[:, 1:, :3], v_2.val)
-        assert is_close(x[:, -2:, :3], v_3.val)
+        np.testing.assert_allclose(x[:, 1:, :], v_1.val, atol=1e-04, rtol=1e-05)
+        np.testing.assert_allclose(x[:, 1:, :3], v_2.val, atol=1e-04, rtol=1e-05)
+        np.testing.assert_allclose(x[:, -2:, :3], v_3.val, atol=1e-04, rtol=1e-05)
 
 
 class TestSpaceToDepth:
@@ -608,9 +604,12 @@ class TestSpaceToDepth:
 
 class TestSqueeze:
     @pytest.mark.parametrize(
-        "use_cpu_only, backend", itertools.product([True, False], backends,)
+        "use_cpu_for_conversion, backend", itertools.product([True, False], backends,)
     )
-    def test_builder_to_backend_smoke(self, use_cpu_only, backend):
+    def test_builder_to_backend_smoke(self, use_cpu_for_conversion, backend):
+        if backend[0] == "mlprogram" and not use_cpu_for_conversion:
+            pytest.xfail("rdar://78343225 ((MIL GPU) Core ML Tools Unit Test failures [numerical error])")
+
         x = np.array([[[[1], [2], [3]]]], dtype=np.float32)
         input_placeholders = {"x": mb.placeholder(shape=x.shape)}
 
@@ -644,15 +643,24 @@ class TestSqueeze:
             input_values,
             expected_output_types,
             expected_outputs,
-            use_cpu_only=use_cpu_only,
+            use_cpu_only=use_cpu_for_conversion,
             backend=backend,
+            use_cpu_for_conversion=use_cpu_for_conversion,
         )
 
     @ssa_fn
     def test_builder_eval(self):
         x = np.array([[[[1], [2], [3]], [[4], [5], [6]]]], dtype=np.float32)
         v = mb.squeeze(x=x, axes=(-4, 3))
-        assert is_close(np.squeeze(x, axis=(-4, 3)), v.val)
+        np.testing.assert_allclose(np.squeeze(x, axis=(-4, 3)), v.val, atol=1e-04, rtol=1e-05)
+
+    @ssa_fn
+    def test_builder_eval_rank_0(self):
+        x = np.array([1], dtype=np.float32)
+        v = mb.squeeze(x=x)
+        assert v.shape == ()
+        assert type(v.val) == np.float32
+        assert np.isclose(np.squeeze(x), v.val)
 
 
 class TestTranspose:
@@ -705,7 +713,7 @@ class TestTranspose:
     def test_builder_eval(self):
         x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         v = mb.transpose(x=x, perm=(1, 0))
-        assert is_close(x.T, v.val)
+        np.testing.assert_allclose(x.T, v.val, atol=1e-04, rtol=1e-05)
 
     @pytest.mark.parametrize(
         "use_cpu_only, backend", itertools.product([True, False], backends,)
@@ -713,7 +721,6 @@ class TestTranspose:
     def test_builder_to_backend_symbolic(self, use_cpu_only, backend):
         s0 = get_new_symbol()
 
-        # Test variadic (rdar://59559656)
         input_placeholders = {
             "x": mb.placeholder(shape=(2, s0)),
         }
@@ -923,7 +930,6 @@ class TestConcat:
     )
     def test_builder_to_backend_type_promotion(self, use_cpu_only, backend):
         t1 = np.array([[1, 2], [4, 5]], dtype=np.float32)
-        t2 = np.array([[7, 8]], dtype=np.float32)
 
         input_placeholders = {
             "x": mb.placeholder(shape=t1.shape),
@@ -963,8 +969,6 @@ class TestConcat:
             [False, True],
         )
     )
-    @pytest.mark.skip(
-        reason="rdar://65198011 (Re-enable Conv3dTranspose, concat interleave and DynamicTile unit tests)")
     def test_builder_to_backend_stress_interleave(self, use_cpu_only, backend,
                                                   rank, n_inputs, negative_index):
 
@@ -1060,7 +1064,7 @@ class TestConcat:
             np.random.rand(1, 1, 3, 2),
         ]
         v = mb.concat(values=values, axis=2)
-        assert is_close(np.concatenate(values, 2), v.val)
+        np.testing.assert_allclose(np.concatenate(values, 2), v.val, atol=1e-04, rtol=1e-05)
 
     @ssa_fn
     def test_builder_eval_failure(self):
@@ -1069,7 +1073,7 @@ class TestConcat:
             np.random.rand(1, 1, 3, 1),
         ]
         with pytest.raises(ValueError):
-            v = mb.concat(values=values, axis=2)
+            mb.concat(values=values, axis=2)
 
 
 class TestSplit:
@@ -1119,7 +1123,7 @@ class TestSplit:
         vs = mb.split(x=t, num_splits=3, axis=0)
         es = np.split(t, [1, 2, 3], axis=0)
         for v, e in zip(vs, es):
-            assert is_close(e, v.val)
+            np.testing.assert_allclose(e, v.val, atol=1e-04, rtol=1e-05)
 
 
 class TestStack:
@@ -1166,4 +1170,4 @@ class TestStack:
             np.random.rand(1, 1, 3, 2).astype(np.float32),
         ]
         v = mb.stack(values=values, axis=2)
-        assert is_close(np.stack(values, 2), v.val)
+        np.testing.assert_allclose(np.stack(values, 2), v.val, atol=1e-04, rtol=1e-05)

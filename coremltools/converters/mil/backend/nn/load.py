@@ -1,44 +1,40 @@
-# -*- coding: utf-8 -*-
-
 #  Copyright (c) 2020, Apple Inc. All rights reserved.
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
-import logging
-from collections import defaultdict
-
 import coremltools as ct
 from coremltools.converters.mil.input_types import (
-    ClassifierConfig,
     ImageType,
     EnumeratedShapes,
     Shape,
     RangeDim,
 )
-from coremltools.models import MLModel
-from coremltools.models import neural_network as neural_network
-import coremltools.models.datatypes as datatypes
+from coremltools.converters.mil.backend.backend_helper import _get_probability_var_for_classifier
 from coremltools.converters.mil.mil import types
 from coremltools.converters.mil.mil.types.symbolic import (
     any_symbolic,
     any_variadic,
     is_symbolic,
 )
-from .op_mapping import convert_ops
+from coremltools.converters._profile_utils import _profile
+from coremltools.models import (
+    MLModel,
+    neural_network as neural_network
+)
+from coremltools.models.datatypes import Array
 from coremltools.models.neural_network import flexible_shape_utils
 from coremltools.models.neural_network.flexible_shape_utils import (
-    update_image_size_range,
     add_enumerated_image_sizes,
     set_multiarray_ndshape_range,
     add_multiarray_ndshape_enumeration,
 )
+from .op_mapping import convert_ops
 from .passes.nn_passes import nn_backend_passes
-from coremltools.converters._profile_utils import _profile
 
 
-def _convert_to_image_input(proto, inputs):
-    tmp_model = MLModel(proto)
+def _convert_to_image_input(proto, inputs, skip_model_load=False):
+    tmp_model = MLModel(proto, skip_model_load=skip_model_load)
     for input_type in inputs:
         if isinstance(input_type, ImageType):
             if input_type.color_layout == "G":
@@ -64,8 +60,8 @@ def _convert_to_image_input(proto, inputs):
     return tmp_model.get_spec()
 
 
-def _convert_to_classifier(proto, classifier_config):
-    tmp_model = MLModel(proto)
+def _convert_to_classifier(proto, classifier_config, skip_model_load=False):
+    tmp_model = MLModel(proto, skip_model_load=skip_model_load)
     tmp_model = neural_network.utils.make_nn_classifier(
         tmp_model,
         classifier_config.class_labels,
@@ -80,7 +76,7 @@ def _set_user_inputs(proto, inputs):
         shape = input_type.shape
         if isinstance(shape, EnumeratedShapes):
             if isinstance(input_type, ImageType):
-                default_height , default_width = 0, 0
+                default_height, default_width = 0, 0
                 for inp in proto.description.input:
                     if inp.name == input_type.name:
                         default_height = inp.type.imageType.height
@@ -221,7 +217,6 @@ def load(prog, **kwargs):
         if types.is_tensor(var.sym_type):
             sym_shape = var.sym_type.get_shape()
             if any_variadic(sym_shape):
-                # TODO: rdar://59559656
                 raise NotImplementedError("Variadic rank is not supported")
             if any_symbolic(sym_shape):
                 user_specified = False
@@ -236,9 +231,9 @@ def load(prog, **kwargs):
                     symbolic_inputs[name] = sym_shape
             else:
                 shape = sym_shape
-            v1_inputs.append((name, datatypes.Array(*shape)))
+            v1_inputs.append((name, Array(*shape)))
         elif types.is_scalar(var.sym_type):
-            v1_inputs.append((name, datatypes.Array(1)))
+            v1_inputs.append((name, Array(1)))
         else:
             raise NotImplementedError()
 
@@ -273,24 +268,25 @@ def load(prog, **kwargs):
         prog.functions["main"].outputs,
     )
 
-    # Replace model outputs's name with v1_outputs
-    output_names = [x[0] for x in v1_outputs]
-    for i, spec_layer in enumerate(builder.nn_spec.layers):
-        for j, name in enumerate(spec_layer.output):
-            for output_name in output_names:
-                if output_name.split(":")[0] == name:
-                    spec_layer.output[j] = output_name
-
     proto = builder.spec
     # image input
     has_image_input = any([isinstance(s, ImageType) for s in input_types])
     if has_image_input:
-        proto = _convert_to_image_input(proto, input_types)
+        proto = _convert_to_image_input(proto, input_types,
+                                        skip_model_load=kwargs.get("skip_model_load", False))
 
     # classifier flag
     classifier_config = kwargs.get("classifier_config", None)
     if classifier_config is not None:
-        proto = _convert_to_classifier(proto, classifier_config)
+        # verify that classifier_config.predicted_probabilities_output if its exists.
+        # And if its empty/None, fill it with the last non const op's output
+        # this is done in "_get_probability_var_for_classifier()"
+        probability_var = _get_probability_var_for_classifier(prog, classifier_config)
+        if classifier_config.predicted_probabilities_output != probability_var.name:
+            classifier_config.predicted_probabilities_output = probability_var.name
+        # add classifier related fields to the proto spec
+        proto = _convert_to_classifier(proto, classifier_config,
+                                       skip_model_load=kwargs.get("skip_model_load", False))
 
     _set_user_inputs(proto, input_types)
     _set_symbolic_inputs(proto, symbolic_inputs)

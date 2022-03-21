@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #  Copyright (c) 2020, Apple Inc. All rights reserved.
 #
 #  Use of this source code is governed by a BSD-3-clause license that can be
@@ -9,22 +8,17 @@ import logging
 
 from coremltools.converters.mil.mil import (
     Block,
-    DefaultInputs,
     get_new_symbol,
     get_existing_symbol,
-    SYMBOL,
-    NONE,
     types,
-    mil_list,
-    Operation,
-    VALUE
+
 )
 from coremltools.converters.mil.mil.input_type import (
     BoolInputType,
+    BoolTensorInputType,
     DefaultInputs,
     InputSpec,
     InternalScalarOrTensorInputType,
-    InternalStringInputType,
     IntTensorInputType,
     IntInputType,
     ListInputType,
@@ -33,15 +27,21 @@ from coremltools.converters.mil.mil.input_type import (
     TupleInputType,
     StringInputType,
 )
-from coremltools.converters.mil.mil.operation import precondition
+from coremltools.converters.mil.mil.operation import (
+    mil_list,
+    NONE,
+    Operation,
+    precondition,
+    SYMBOL,
+    VALUE
+)
 from coremltools.converters.mil.mil.types import is_compatible_type
 from coremltools.converters.mil.mil.types.type_mapping import (
     numpy_val_to_builtin_val,
     is_subtype,
 )
-
-from coremltools.converters.mil.mil.var import Var
 from coremltools.converters.mil.mil.ops.defs._op_reqs import register_op
+
 
 @register_op(doc_str="")
 class cond(Operation):
@@ -125,10 +125,10 @@ class cond(Operation):
             return [v.val for v in self.blocks[0].outputs]
         return [v.val for v in self.blocks[1].outputs]
 
-@register_op(doc_str="")
-class const(Operation):
+
+class Const(Operation):
     """
-    Return constant values.
+    A base class that returns constant values.
 
     Parameters
     ----------
@@ -149,17 +149,11 @@ class const(Operation):
     """
 
     input_spec = InputSpec(
-        mode=InternalStringInputType(const=True, optional=True),
         val=InternalScalarOrTensorInputType(const=True),
     )
 
-    def default_inputs(self):
-        return DefaultInputs(
-            mode="immediate_value",
-            )
-
     def __init__(self, **kwargs):
-        super(const, self).__init__(**kwargs)
+        super(Const, self).__init__(**kwargs)
 
     def type_inference(self):
         builtin_type, _ = self._get_type_val(self.val.val)
@@ -179,12 +173,19 @@ class const(Operation):
             value = np.int32(value)
         elif isinstance(value, (tuple, list, np.ndarray)):
             value = np.array(value)
-            if value.dtype == np.int64:
-                # We use int32 by default.
+
+            # For the int type, we use int32 by default
+            if value.dtype in [np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.uint64, np.int64]:
+                if value.dtype in [np.uint64, np.int64]:
+                    msg = "Downcast const op {} data int64 as int32".format(self.name)
+                    logging.debug(msg)
                 value = value.astype(np.int32)
 
-            if value.dtype == np.float64:
-                # We use float32 by default.
+
+            # For the float type, we use float32 by default
+            elif value.dtype == np.float64:
+                msg = "Downcast const op {} data fp64 as fp32".format(self.name)
+                logging.debug(msg)
                 value = value.astype(np.float32)
 
         elif isinstance(value, mil_list):
@@ -194,6 +195,9 @@ class const(Operation):
             if len(list_value) == 0:
                 raise ValueError("'mil_list' points to an empty list")
             builtin_elem_type, _ = self._get_type_val(list_value[0])
+            # mil_list is a special case that we want to preserve the int64 element type
+            if isinstance(list_value[0], np.int64):
+                builtin_elem_type = types.int64
             from coremltools.converters.mil.mil.types.type_list import list as types_list
             builtin_type = types_list(builtin_elem_type, init_length=len(list_value), dynamic_length=False)
             return builtin_type, value
@@ -204,6 +208,11 @@ class const(Operation):
 
         _, builtin_type = numpy_val_to_builtin_val(value)
         return builtin_type, value
+
+@register_op(doc_str="")
+class const(Const):
+    def __init__(self, **kwargs):
+        super(const, self).__init__(**kwargs)
 
 
 # Internal const can have symbolic value (for testing purpose)
@@ -234,8 +243,8 @@ class select(Operation):
 
     Parameters
     ----------
-    cond: tensor<[\*D1], T> (Required)
-        * Tensor. When ``True`` (non-zero), select element from ``x``, otherwise, ``y``.
+    cond: tensor<[\*D1], B> (Required)
+        * Tensor. When ``True``, select element from ``x``, otherwise, ``y``.
 
     a: tensor<[\*D2], T> (Optional)
         * Values selected at indices where ``cond`` is ``True``.
@@ -256,11 +265,12 @@ class select(Operation):
 
     Attributes
     ----------
+    B: bool
     T: fp32
     """
-    
+
     input_spec = InputSpec(
-        cond=TensorInputType(), a=TensorInputType(), b=TensorInputType()
+        cond=BoolTensorInputType(), a=TensorInputType(), b=TensorInputType()
     )
 
     def __init__(self, **kwargs):
@@ -299,7 +309,7 @@ class while_loop(Operation):
 
     _body: function  (Required)
         * A Python function that takes ``loop_vars`` as positional arguments.
-        * The function must return the same number of output vars as ``loop_var``
+        * The function must return the same number of output vars as ``loop_vars``
           with the same types.
 
     loop_vars: tuple (Required)
@@ -346,7 +356,7 @@ class while_loop(Operation):
         # Cond block:
         block_name = self.name + '_cond_block'
         with Block(block_inputs=block_inputs, outer_op=self,
-                name=block_name) as cond_block:
+                   name=block_name) as cond_block:
 
             cond_func = self._cond.val
             cond_var = cond_func(*cond_block.inputs)
@@ -356,13 +366,12 @@ class while_loop(Operation):
         # Body block
         block_name = self.name + '_body_block'
         with Block(block_inputs=block_inputs, outer_op=self,
-                name=block_name) as body_block:
+                   name=block_name) as body_block:
             body_func = self._body.val
             exit_vars = body_func(*body_block.inputs)
             exit_vars = list(exit_vars) if isinstance(exit_vars, (list, tuple)) \
                 else [exit_vars]
             body_block.set_outputs(exit_vars)
-            #self.blocks.append(body_block)
 
         return cond_block, body_block, exit_vars
 
@@ -456,8 +465,8 @@ class while_loop(Operation):
                 if not is_subtype(v_out.sym_type, v_in.sym_type):
                     msg = 'Block output {}: {} is not a subtype of ' +\
                             'block input {}: {} after factoring shape changes'
-                    raise ValueError(msg.format(v_out.name. v.sym_type,
-                        v_in.name, v_in.sym_type))
+                    raise ValueError(msg.format(v_out.name, v_out.sym_type.__name__,
+                        v_in.name, v_in.sym_type.__name__))
                 if not while_loop._check_equal_value(v_out.sym_val, v_in.sym_val):
                     msg = 'Block output {}: {} is not equal to ' +\
                             'block input {}: {} after value changes'
@@ -706,7 +715,6 @@ class list_read(Operation):
             )
             raise ValueError(msg.format(self.name))
         return list_elem_type
-
 
 
 @register_op(doc_str="")

@@ -1,3 +1,8 @@
+# Copyright (c) 2021, Apple Inc. All rights reserved.
+#
+# Use of this source code is governed by a BSD-3-clause license that can be
+# found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
+
 import itertools
 import os
 import shutil
@@ -2903,7 +2908,7 @@ class KerasNumericCorrectnessStressTest(KerasNumericCorrectnessTest):
 
             if use_tmp_folder:
                 shutil.rmtree(model_dir)
-            self.assertEquals(
+            self.assertEqual(
                 len(coreml_preds),
                 len(keras_preds),
                 msg="Failed test case %s. Lengths wrong (%s vs %s)"
@@ -2911,7 +2916,7 @@ class KerasNumericCorrectnessStressTest(KerasNumericCorrectnessTest):
             )
             for i in range(len(keras_preds)):
                 max_den = max(1.0, keras_preds[i], coreml_preds[i])
-                self.assertAlmostEquals(
+                self.assertAlmostEqual(
                     keras_preds[i] / max_den,
                     coreml_preds[i] / max_den,
                     delta=delta,

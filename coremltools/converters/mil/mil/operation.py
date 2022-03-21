@@ -4,6 +4,7 @@
 #  found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
 
 import numpy as np
+
 from coremltools.converters.mil.mil import types
 from coremltools.converters.mil.mil.types import is_compatible_type
 from coremltools.converters.mil.mil.types.symbolic import is_symbolic, any_symbolic
@@ -257,7 +258,7 @@ class Operation(object):
             for i, (n, sym_type, sym_val) in enumerate(
                 zip(output_names, output_types, output_vals)
             ):
-                name = self.name + ":" + n if n != "" else self.name
+                name = self.name + "_" + n if n != "" else self.name
                 if types.is_list(sym_type):
                     new_var = ListVar(
                         name,
@@ -412,8 +413,7 @@ class Operation(object):
                 raise ValueError(msg_prefix + \
                     "Required input {} is missing".format(name))
 
-    def _validate_and_set_inputs(self, input_kvs,
-        no_check_var_types=False):
+    def _validate_and_set_inputs(self, input_kvs, no_check_var_types=False):
         """
         For each k, v in `input_kvs`, perform the followings:
 
@@ -455,7 +455,7 @@ class Operation(object):
 
         for name, var in input_kvs.items():
             # TODO: remove InternalVar check
-            #if not isinstance(var, InternalVar):
+            # if not isinstance(var, InternalVar):
 
             # Remove this operation itself from existing input
             # Var's child_ops
@@ -510,35 +510,36 @@ class Operation(object):
     def var_to_str(v):
         if isinstance(v, (tuple, list)):
             return "(" + ", ".join(["%" + s.name for s in v]) + ")"
-        else:
-            return "%" + v.name
+        elif v.op and v.op.op_type == "const":
+            val = v.op.val.sym_val
+            if isinstance(val, (np.generic, np.ndarray)):
+                # for small tensors, serialize as string; skip large tensors.
+                if val.size <= 10:
+                    return str(val.tolist())
+            else:
+                # other types are small enough they can be serialized
+                return (
+                    '"' + val + '"'
+                    if isinstance(val, str)
+                    else str(val)
+                )
+
+        return "%" + v.name
 
     def indented_str(self, indent=""):
+        if self.op_type == "const":
+            return ""
         s = indent
         if self.outputs is not None:
             s += ", ".join([str(o) for o in self.outputs])
         s += " = " + self.op_type + "("
-        if self.op_type == "const":
-            if self.mode.val == "immediate_value":
-                if isinstance(self.val.sym_val, (np.generic, np.ndarray)):
-                    val_str = str(self.val.sym_val.tolist())
-                else:
-                    val_str = (
-                        '"' + self.val.sym_val + '"'
-                        if isinstance(self.val.sym_val, str)
-                        else str(self.val.sym_val)
-                    )
-                s += "val=" + val_str
-            else:
-                s += "val=(file_value)"
-        else:
-            s += ", ".join(
-                [
-                    k + "=" + Operation.var_to_str(self.inputs[k])
-                    for k in self._input_types.keys()
-                    if k in self.inputs and not is_internal_input(k)
-                ]
-            )
+        s += ", ".join(
+            [
+                k + "=" + Operation.var_to_str(self.inputs[k])
+                for k in self._input_types.keys()
+                if k in self.inputs and not is_internal_input(k)
+            ]
+        )
         s += ', name="{}")\n'.format(self.name)
         for b in self.blocks:
             s += b.indented_str(indent=indent + SPACES)

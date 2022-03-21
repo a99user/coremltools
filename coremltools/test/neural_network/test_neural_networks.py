@@ -1,10 +1,15 @@
+# Copyright (c) 2021, Apple Inc. All rights reserved.
+#
+# Use of this source code is governed by a BSD-3-clause license that can be
+# found in the LICENSE.txt file or at https://opensource.org/licenses/BSD-3-Clause
+
+import os
+import shutil
+import tempfile
 import unittest
 
 import numpy as np
-import tempfile
 import pytest
-import shutil
-import os
 
 import coremltools
 from coremltools._deps import _HAS_KERAS_TF, MSG_KERAS1_NOT_FOUND
@@ -73,7 +78,7 @@ class KerasBasicNumericCorrectnessTest(unittest.TestCase):
             inputs = np.random.rand(input_dim)
             outputs = coremlmodel.predict({"input": inputs})
             # this checks that the dictionary got the right name and type
-            self.assertEquals(type(outputs[output_names[0]]), type({"a": 0.5}))
+            self.assertEqual(type(outputs[output_names[0]]), type({"a": 0.5}))
 
     def test_classifier_no_name(self):
         np.random.seed(1988)
@@ -112,7 +117,7 @@ class KerasBasicNumericCorrectnessTest(unittest.TestCase):
             inputs = np.random.rand(input_dim)
             outputs = coremlmodel.predict({"input": inputs})
             # this checks that the dictionary got the right name and type
-            self.assertEquals(type(outputs[output_names[0]]), type({"a": 0.5}))
+            self.assertEqual(type(outputs[output_names[0]]), type({"a": 0.5}))
 
     def test_internal_layer(self):
 
@@ -171,7 +176,7 @@ class KerasBasicNumericCorrectnessTest(unittest.TestCase):
             partialOutput = coreml2.predict({"input": inputs})
 
             for i in range(0, num_channels2):
-                self.assertAlmostEquals(
+                self.assertAlmostEqual(
                     fullOutputs["middle_layer_output"][i],
                     partialOutput["output2"][i],
                     2,

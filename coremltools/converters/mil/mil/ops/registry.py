@@ -15,7 +15,7 @@ class SSAOpRegistry:
     custom_ops = {}
 
     @staticmethod
-    def register_op(doc_str="", is_custom_op=False, namespace="core"):
+    def register_op(doc_str="", is_custom_op=False, namespace="core", allow_override=False):
         """
         Registration routine for MIL Program operators
         is_custom_op: (Boolean) [Default=False]
@@ -25,11 +25,12 @@ class SSAOpRegistry:
             Current operator is registered as `SSARegistry.custom_ops`
             Otherwise, current operator is registered as usual operator,
             i.e. registered in `SSARegistry.ops'.
+        allow_override: (Boolean) [Default=False]
+            If True, it is allowed for an operation to override the previous operation with the same op name.
         """
 
         def class_wrapper(op_cls):
             op_type = op_cls.__name__
-            # op_cls.__doc__ = doc_str  # TODO: rdar://58622145
 
             # Operation specific to custom op
             op_msg = "Custom op" if is_custom_op else "op"
@@ -41,7 +42,7 @@ class SSAOpRegistry:
 
             logging.debug("Registering {} {}".format(op_msg, op_type))
 
-            if op_type in op_reg:
+            if op_type in op_reg and not allow_override:
                 raise ValueError(
                     "SSA {} {} already registered.".format(op_msg, op_type)
                 )
